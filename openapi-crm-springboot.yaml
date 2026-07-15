@@ -1,0 +1,1070 @@
+openapi: 3.0.3
+info:
+  title: CRM Backend API
+  version: 1.0.0
+servers:
+  - url: /api/v1
+paths:
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout user
+      responses:
+        '200':
+          description: Logged out
+  /auth/change-password:
+    post:
+      tags: [Auth]
+      summary: Change password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        '200':
+          description: Password changed
+  /dashboard/summary:
+    get:
+      tags: [Dashboard]
+      summary: Get dashboard summary counters
+      responses:
+        '200':
+          description: Summary
+  /calendar/events:
+    get:
+      tags: [Calendar]
+      summary: Get task and reminder calendar events
+      responses:
+        '200':
+          description: Calendar events
+
+  /leads:
+    get:
+      tags: [Leads]
+      summary: List leads
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string }
+        - in: query
+          name: assignedUserId
+          schema: { type: integer, format: int64 }
+        - in: query
+          name: fromDate
+          schema: { type: string, format: date }
+        - in: query
+          name: toDate
+          schema: { type: string, format: date }
+        - in: query
+          name: leadType
+          schema: { type: string }
+        - in: query
+          name: leadSource
+          schema: { type: string }
+      responses:
+        '200':
+          description: Lead list
+    post:
+      tags: [Leads]
+      summary: Create lead (multipart)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LeadCreateMultipart'
+      responses:
+        '201':
+          description: Lead created
+
+  /leads/{id}:
+    get:
+      tags: [Leads]
+      summary: Get lead by id
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Lead
+    put:
+      tags: [Leads]
+      summary: Update lead (multipart)
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LeadUpdateMultipart'
+      responses:
+        '200':
+          description: Lead updated
+    delete:
+      tags: [Leads]
+      summary: Delete lead
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Lead deleted
+
+  /leads/{id}/status:
+    patch:
+      tags: [Leads]
+      summary: Update lead status
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                leadStatus:
+                  type: string
+      responses:
+        '200':
+          description: Status updated
+
+  /leads/{id}/convert:
+    post:
+      tags: [Leads]
+      summary: Convert lead to opportunity
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                opportunityName:
+                  type: string
+      responses:
+        '200':
+          description: Converted
+
+  /leads/import/indiamart:
+    post:
+      tags: [Leads]
+      summary: Import leads from IndiaMart
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fromDate:
+                  type: string
+                  format: date
+                toDate:
+                  type: string
+                  format: date
+      responses:
+        '200':
+          description: Imported
+
+  /leads/{id}/notes:
+    get:
+      tags: [Lead Notes]
+      summary: List notes by lead id
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Notes
+    post:
+      tags: [Lead Notes]
+      summary: Add note to lead
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                leadNote:
+                  type: string
+      responses:
+        '201':
+          description: Note added
+
+  /leads/notes:
+    get:
+      tags: [Lead Notes]
+      summary: List all notes
+      responses:
+        '200':
+          description: Notes
+
+  /leads/notes/{noteId}:
+    delete:
+      tags: [Lead Notes]
+      summary: Delete note
+      parameters:
+        - in: path
+          name: noteId
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Note deleted
+
+  /leads/{id}/reminders:
+    get:
+      tags: [Lead Reminders]
+      summary: List reminders by lead id
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Reminders
+    post:
+      tags: [Lead Reminders]
+      summary: Add reminder to lead
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reminderFor:
+                  type: string
+                reminderDate:
+                  type: string
+                  format: date-time
+      responses:
+        '201':
+          description: Reminder added
+
+  /leads/reminders:
+    get:
+      tags: [Lead Reminders]
+      summary: List all reminders
+      responses:
+        '200':
+          description: Reminders
+
+  /leads/reminders/{reminderId}:
+    delete:
+      tags: [Lead Reminders]
+      summary: Delete reminder
+      parameters:
+        - in: path
+          name: reminderId
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Reminder deleted
+
+  /opportunities:
+    get:
+      tags: [Opportunities]
+      summary: List opportunities
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string }
+      responses:
+        '200':
+          description: Opportunities
+    post:
+      tags: [Opportunities]
+      summary: Create opportunity
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/OpportunityCreateMultipart'
+      responses:
+        '201':
+          description: Opportunity created
+
+  /opportunities/{id}:
+    get:
+      tags: [Opportunities]
+      summary: Get opportunity by id
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Opportunity
+    put:
+      tags: [Opportunities]
+      summary: Update opportunity
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/OpportunityCreateMultipart'
+      responses:
+        '200':
+          description: Opportunity updated
+    delete:
+      tags: [Opportunities]
+      summary: Delete opportunity
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Opportunity deleted
+
+  /projects:
+    get:
+      tags: [Projects]
+      summary: List projects
+      responses:
+        '200':
+          description: Projects
+    post:
+      tags: [Projects]
+      summary: Create project
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ProjectCreateMultipart'
+      responses:
+        '201':
+          description: Project created
+
+  /projects/{id}:
+    get:
+      tags: [Projects]
+      summary: Get project by id
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Project
+    put:
+      tags: [Projects]
+      summary: Update project
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ProjectCreateMultipart'
+      responses:
+        '200':
+          description: Project updated
+    delete:
+      tags: [Projects]
+      summary: Delete project
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Project deleted
+
+  /tasks:
+    get:
+      tags: [Tasks]
+      summary: List tasks
+      responses:
+        '200':
+          description: Tasks
+    post:
+      tags: [Tasks]
+      summary: Create task
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TaskCreateMultipart'
+      responses:
+        '201':
+          description: Task created
+
+  /tasks/{id}:
+    get:
+      tags: [Tasks]
+      summary: Get task by id
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Task
+    put:
+      tags: [Tasks]
+      summary: Update task
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskUpdateRequest'
+      responses:
+        '200':
+          description: Task updated
+    delete:
+      tags: [Tasks]
+      summary: Delete task
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Task deleted
+
+  /tasks/by-team:
+    get:
+      tags: [Tasks]
+      summary: List tasks for logged-in member team
+      responses:
+        '200':
+          description: Team tasks
+
+  /contacts:
+    get:
+      tags: [Contacts]
+      summary: List contacts
+      responses:
+        '200':
+          description: Contacts
+    post:
+      tags: [Contacts]
+      summary: Create contact
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContactRequest'
+      responses:
+        '201':
+          description: Contact created
+
+  /contacts/{id}:
+    get:
+      tags: [Contacts]
+      summary: Get contact by id
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Contact
+    put:
+      tags: [Contacts]
+      summary: Update contact
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContactRequest'
+      responses:
+        '200':
+          description: Contact updated
+    delete:
+      tags: [Contacts]
+      summary: Delete contact
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Contact deleted
+
+  /organizations:
+    get:
+      tags: [Organizations]
+      summary: List organizations
+      responses:
+        '200':
+          description: Organizations
+    post:
+      tags: [Organizations]
+      summary: Create organization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrganizationRequest'
+      responses:
+        '201':
+          description: Organization created
+
+  /organizations/{id}:
+    get:
+      tags: [Organizations]
+      summary: Get organization by id
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Organization
+    put:
+      tags: [Organizations]
+      summary: Update organization
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrganizationRequest'
+      responses:
+        '200':
+          description: Organization updated
+    delete:
+      tags: [Organizations]
+      summary: Delete organization
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Organization deleted
+
+  /roles:
+    get:
+      tags: [Roles]
+      summary: List roles
+      responses:
+        '200':
+          description: Roles
+    post:
+      tags: [Roles]
+      summary: Create role
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                roleName:
+                  type: string
+      responses:
+        '201':
+          description: Role created
+
+  /roles/{id}:
+    get:
+      tags: [Roles]
+      summary: Get role by id
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Role
+    put:
+      tags: [Roles]
+      summary: Update role
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                roleName:
+                  type: string
+      responses:
+        '200':
+          description: Role updated
+    delete:
+      tags: [Roles]
+      summary: Delete role
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Role deleted
+
+  /roles/{id}/permissions:
+    get:
+      tags: [Roles]
+      summary: Get role permissions
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Permissions
+    put:
+      tags: [Roles]
+      summary: Replace role permissions
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                permissions:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Permissions updated
+
+  /teams:
+    get:
+      tags: [Teams]
+      summary: List teams
+      responses:
+        '200':
+          description: Teams
+    post:
+      tags: [Teams]
+      summary: Create team
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                teamName:
+                  type: string
+      responses:
+        '201':
+          description: Team created
+
+  /teams/{id}:
+    get:
+      tags: [Teams]
+      summary: Get team by id
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Team
+    put:
+      tags: [Teams]
+      summary: Update team
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                teamName:
+                  type: string
+      responses:
+        '200':
+          description: Team updated
+    delete:
+      tags: [Teams]
+      summary: Delete team
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Team deleted
+
+  /team-members:
+    get:
+      tags: [Team Members]
+      summary: List team members
+      responses:
+        '200':
+          description: Team members
+    post:
+      tags: [Team Members]
+      summary: Create team member and user account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TeamMemberCreateRequest'
+      responses:
+        '201':
+          description: Team member created
+
+  /team-members/{id}:
+    get:
+      tags: [Team Members]
+      summary: Get team member by id
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Team member
+    put:
+      tags: [Team Members]
+      summary: Update team member and linked user
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TeamMemberUpdateRequest'
+      responses:
+        '200':
+          description: Team member updated
+    delete:
+      tags: [Team Members]
+      summary: Delete team member and linked user
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Team member deleted
+
+  /team-assignments:
+    get:
+      tags: [Team Assignments]
+      summary: List created team assignments
+      responses:
+        '200':
+          description: Team assignments
+    post:
+      tags: [Team Assignments]
+      summary: Create team assignments for many member ids
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                teamId:
+                  type: integer
+                  format: int64
+                memberIds:
+                  type: array
+                  items:
+                    type: integer
+                    format: int64
+      responses:
+        '201':
+          description: Team assignments created
+
+  /team-assignments/{id}:
+    get:
+      tags: [Team Assignments]
+      summary: Get assignment by id
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Team assignment
+    put:
+      tags: [Team Assignments]
+      summary: Update assignment
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                teamId:
+                  type: integer
+                  format: int64
+                memberId:
+                  type: integer
+                  format: int64
+      responses:
+        '200':
+          description: Team assignment updated
+    delete:
+      tags: [Team Assignments]
+      summary: Delete assignment
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Team assignment deleted
+
+  /reports/leads:
+    get:
+      tags: [Reports]
+      summary: Lead report
+      parameters:
+        - in: query
+          name: fromDate
+          schema: { type: string, format: date }
+        - in: query
+          name: toDate
+          schema: { type: string, format: date }
+        - in: query
+          name: leadType
+          schema: { type: string }
+        - in: query
+          name: leadStatus
+          schema: { type: string }
+        - in: query
+          name: leadSource
+          schema: { type: string }
+      responses:
+        '200':
+          description: Lead report
+
+  /reports/opportunities:
+    get:
+      tags: [Reports]
+      summary: Opportunity report
+      responses:
+        '200':
+          description: Opportunity report
+
+  /reports/projects:
+    get:
+      tags: [Reports]
+      summary: Project report
+      responses:
+        '200':
+          description: Project report
+
+  /reports/tasks:
+    get:
+      tags: [Reports]
+      summary: Task report
+      responses:
+        '200':
+          description: Task report
+
+  /reports/contacts:
+    get:
+      tags: [Reports]
+      summary: Contact report
+      responses:
+        '200':
+          description: Contact report
+
+  /reports/organizations:
+    get:
+      tags: [Reports]
+      summary: Organization report
+      responses:
+        '200':
+          description: Organization report
+
+components:
+  parameters:
+    IdParam:
+      in: path
+      name: id
+      required: true
+      schema:
+        type: integer
+        format: int64
+  schemas:
+    LoginRequest:
+      type: object
+      required: [usernameOrEmail, password]
+      properties:
+        usernameOrEmail:
+          type: string
+        password:
+          type: string
+    ChangePasswordRequest:
+      type: object
+      required: [oldPassword, newPassword, confirmPassword]
+      properties:
+        oldPassword:
+          type: string
+        newPassword:
+          type: string
+        confirmPassword:
+          type: string
+    AuthResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        tokenType:
+          type: string
+          example: Bearer
+        expiresIn:
+          type: integer
+          format: int64
+        user:
+          type: object
+          additionalProperties: true
+        permissions:
+          type: array
+          items:
+            type: string
+    LeadCreateMultipart:
+      type: object
+      properties:
+        firstName: { type: string }
+        lastName: { type: string }
+        title: { type: string }
+        mobileNo: { type: string }
+        address: { type: string }
+        email: { type: string }
+        city: { type: string }
+        state: { type: string }
+        country: { type: string }
+        phoneNo: { type: string }
+        organizationName: { type: string }
+        website: { type: string }
+        industry: { type: string }
+        noOfEmployee: { type: integer }
+        source: { type: string }
+        type: { type: string }
+        reason: { type: string }
+        status: { type: string }
+        designation: { type: string }
+        inquiryDate: { type: string, format: date }
+        userIdFk: { type: integer, format: int64 }
+        uploadDocument: { type: string, format: binary }
+        uploadDocument1: { type: string, format: binary }
+        uploadDocument2: { type: string, format: binary }
+        uploadDocument3: { type: string, format: binary }
+    LeadUpdateMultipart:
+      allOf:
+        - $ref: '#/components/schemas/LeadCreateMultipart'
+        - type: object
+          required: []
+    OpportunityCreateMultipart:
+      type: object
+      properties:
+        oppName: { type: string }
+        oppTitle: { type: string }
+        oppStatus: { type: string }
+        oppAmount: { type: number }
+        oppForcastCloseDate: { type: string, format: date }
+        oppActualCloseDate: { type: string, format: date }
+        oppDescription: { type: string }
+        userIdFk: { type: integer, format: int64 }
+        docOpportunity: { type: string, format: binary }
+    ProjectCreateMultipart:
+      type: object
+      properties:
+        projectName: { type: string }
+        organizationName: { type: string }
+        projectStatus: { type: string }
+        projectStartDate: { type: string, format: date }
+        projectCompletedDate: { type: string, format: date }
+        forecastCompletedDate: { type: string, format: date }
+        projectDescription: { type: string }
+        uploadProjectDoc: { type: string, format: binary }
+    TaskCreateMultipart:
+      type: object
+      properties:
+        taskName: { type: string }
+        taskAssign:
+          type: string
+          enum: [Member, Team]
+        taskAssignedMemberIds:
+          type: array
+          items: { type: integer, format: int64 }
+        taskAssignedTeamId:
+          type: integer
+          format: int64
+        taskStartDate: { type: string, format: date }
+        taskCompletedDate: { type: string, format: date }
+        taskDueDate: { type: string, format: date }
+        taskRelatedTo: { type: string }
+        taskDescription: { type: string }
+        taskPriority: { type: string }
+        taskPercentageCompleted: { type: integer }
+        uploadTask: { type: string, format: binary }
+    TaskUpdateRequest:
+      type: object
+      properties:
+        taskName: { type: string }
+        taskAssignedTo: { type: integer, format: int64 }
+        taskStartDate: { type: string, format: date }
+        taskCompletedDate: { type: string, format: date }
+        taskDueDate: { type: string, format: date }
+        taskRelatedTo: { type: string }
+        taskDescription: { type: string }
+        taskPriority: { type: string }
+        taskPercentageCompleted: { type: integer }
+    ContactRequest:
+      type: object
+      properties:
+        contactName: { type: string }
+        contactMobileNo: { type: string }
+        contactEmail: { type: string }
+        contactAddress: { type: string }
+        contactCity: { type: string }
+        contactState: { type: string }
+        contactCountry: { type: string }
+        contactOccasion: { type: string }
+        contactPostalCode: { type: string }
+        contactOccasionDate: { type: string, format: date }
+    OrganizationRequest:
+      type: object
+      properties:
+        organizationName: { type: string }
+        organizationMoblieNo: { type: string }
+        organizationEmail: { type: string }
+        organizationAddress: { type: string }
+        organizationCity: { type: string }
+        organizationState: { type: string }
+        organizationCountry: { type: string }
+        organizationBackground: { type: string }
+        organizationOccasion: { type: string }
+        organizationPostcode: { type: string }
+        organizationOccasionDate: { type: string, format: date }
+    TeamMemberCreateRequest:
+      type: object
+      properties:
+        teamMemberName: { type: string }
+        teamMemberMobile: { type: string }
+        teamMemberEmail: { type: string }
+        teamMemberRole: { type: integer, format: int64 }
+        password: { type: string }
+    TeamMemberUpdateRequest:
+      type: object
+      properties:
+        teamMemberName: { type: string }
+        teamMemberMobile: { type: string }
+        teamMemberEmail: { type: string }
+        teamMemberRole: { type: integer, format: int64 }

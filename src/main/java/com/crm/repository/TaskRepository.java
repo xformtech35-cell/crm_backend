@@ -1,0 +1,18 @@
+package com.crm.repository;
+
+import com.crm.entity.Task;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+
+@Repository
+public interface TaskRepository extends JpaRepository<Task, Long>, JpaSpecificationExecutor<Task> {
+    List<Task> findByUserIdFk(Long userIdFk);
+    List<Task> findByTaskAssignedTeam(Long taskAssignedTeam);
+    List<Task> findByTaskDueDate(java.time.LocalDate dueDate);
+    List<Task> findByTaskAssignedMemberOrTaskAssignedTo(Long memberId, Long assignedTo);
+    List<Task> findByTaskRelatedTo(String taskRelatedTo);
+    List<Task> findByUserIdFkAndTaskDueDate(Long userIdFk, java.time.LocalDate dueDate);
+}

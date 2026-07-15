@@ -1,0 +1,43 @@
+package com.crm.repository;
+
+import com.crm.entity.Lead;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+@Repository
+public interface LeadRepository extends JpaRepository<Lead, Long>, JpaSpecificationExecutor<Lead> {
+    List<Lead> findByUserIdFk(Long userIdFk);
+    List<Lead> findByLeadStatus(String leadStatus);
+    List<Lead> findByUserIdFkAndLeadStatus(Long userIdFk, String leadStatus);
+    List<Lead> findByLeadAssignedMember(Long leadAssignedMember);
+    List<Lead> findByLeadAssignedMemberAndLeadStatus(Long leadAssignedMember, String leadStatus);
+    Optional<Lead> findByUniqueQueryId(String uniqueQueryId);
+    boolean existsByUniqueQueryId(String uniqueQueryId);
+    long countByLeadStatus(String leadStatus);
+    long countByUserIdFk(Long userIdFk);    
+
+    @Query("SELECT l.leadStatus AS status, COUNT(l) AS count FROM Lead l GROUP BY l.leadStatus")
+    List<Object[]> countGroupByStatus();
+
+    @Query("SELECT l.leadSource AS source, COUNT(l) AS count FROM Lead l GROUP BY l.leadSource")
+    List<Object[]> countGroupBySource();
+
+    @Query("SELECT l.leadStatus AS status, COUNT(l) AS count FROM Lead l WHERE l.userIdFk = :userId GROUP BY l.leadStatus")
+    List<Object[]> countGroupByStatusForUser(@Param("userId") Long userId);
+
+    @Query("SELECT l.leadSource AS source, COUNT(l) AS count FROM Lead l WHERE l.userIdFk = :userId GROUP BY l.leadSource")
+    List<Object[]> countGroupBySourceForUser(@Param("userId") Long userId);
+
+    @Query("SELECT l FROM Lead l WHERE l.leadCreatedDate BETWEEN :fromDate AND :toDate")
+    List<Lead> findByLeadCreatedDateBetween(@Param("fromDate") java.time.LocalDateTime fromDate, @Param("toDate") java.time.LocalDateTime toDate);
+
+}
+
+

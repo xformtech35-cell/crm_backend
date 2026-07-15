@@ -1,0 +1,884 @@
+package com.crm.service;
+
+import com.crm.dto.request.ImportLeadRequest;
+import com.crm.dto.request.LeadRequest;
+import com.crm.entity.Lead;
+import com.crm.entity.LeadNote;
+import com.crm.entity.LeadReminder;
+import com.crm.entity.Opportunity;
+import com.crm.exception.BadRequestException;
+import com.crm.exception.ResourceNotFoundException;
+import com.crm.repository.LeadNoteRepository;
+import com.crm.repository.LeadReminderRepository;
+import com.crm.repository.LeadRepository;
+import com.crm.repository.LeadScoreRepository;
+import com.crm.repository.OpportunityRepository;
+import com.crm.repository.TaskRepository;
+import com.crm.entity.Task;
+import com.crm.util.AppConstants;
+import com.crm.util.FileUploadUtil;
+import com.crm.util.AuthUtil;
+import com.crm.entity.IntegrationConfig;
+import com.crm.repository.IntegrationConfigRepository;
+import com.crm.repository.NegotiationRepository;
+import com.crm.entity.NegotiationRevision;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
+import org.springframework.beans.factory.annotation.Value;
+
+import java.util.Optional;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.util.UriComponentsBuilder;
+
+import java.io.IOException;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
+import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+
+import com.crm.entity.Negotiation;
+import com.crm.entity.NegotiationRevision;
+import com.crm.repository.NegotiationRevisionRepository;
+
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class LeadService {
+
+    private final LeadRepository leadRepository;
+    private final LeadNoteRepository leadNoteRepository;
+    private final LeadReminderRepository leadReminderRepository;
+    private final LeadScoreRepository leadScoreRepository;
+    private final OpportunityRepository opportunityRepository;
+    private final TaskRepository taskRepository;
+    private final FileUploadUtil fileUploadUtil;
+    private final WebClient webClient;
+    private final LeadScoringService leadScoringService;
+    private final AuthUtil authUtil;
+    private final IntegrationConfigRepository integrationConfigRepository;
+
+    private final NegotiationRevisionRepository negotiationRevisionRepository;
+    private final NegotiationRepository negotiationRepository;
+
+    // public LeadService() {
+    //     this.leadRepository = null;
+    //     this.leadNoteRepository = null;
+    //     this.leadReminderRepository = null;
+    //     this.leadScoreRepository = null;
+    //     this.opportunityRepository = null;
+    //     this.taskRepository = null;
+    //     this.fileUploadUtil = null;
+    //     this.webClient = null;
+    //     this.leadScoringService = null;
+    //     this.authUtil = null;
+    //     this.integrationConfigRepository = null;
+    //     this.negotiationRepository = null;
+    // }
+    // public LeadService(LeadRepository leadRepository, LeadNoteRepository leadNoteRepository, LeadReminderRepository leadReminderRepository, LeadScoreRepository leadScoreRepository, OpportunityRepository opportunityRepository, TaskRepository taskRepository, FileUploadUtil fileUploadUtil, WebClient webClient, LeadScoringService leadScoringService, AuthUtil authUtil, IntegrationConfigRepository integrationConfigRepository, NegotiationRepository negotiationRepository) {
+    //     this.leadRepository = leadRepository;
+    //     this.leadNoteRepository = leadNoteRepository;
+    //     this.leadReminderRepository = leadReminderRepository;
+    //     this.leadScoreRepository = leadScoreRepository;
+    //     this.opportunityRepository = opportunityRepository;
+    //     this.taskRepository = taskRepository;
+    //     this.fileUploadUtil = fileUploadUtil;
+    //     this.webClient = webClient;
+    //     this.leadScoringService = leadScoringService;
+    //     this.authUtil = authUtil;
+    //     this.integrationConfigRepository = integrationConfigRepository;
+    //     this.negotiationRepository = negotiationRepository;
+    // }
+    @Value("${app.indiamart.api-key}")
+    private String indiamartApiKey;
+
+    @Value("${app.indiamart.url}")
+    private String indiamartUrl;
+
+    private static final DateTimeFormatter INDIAMART_DATE_FORMAT = DateTimeFormatter.ofPattern("dd-MMM-yyyy",
+            Locale.ENGLISH);
+
+    public List<Lead> getAllLeads(Long userId, String role) {
+        if (authUtil.isSuperAdmin(role)) {
+            return leadRepository.findAll();
+        }
+        if (authUtil.isAdmin(role)) {
+            return leadRepository.findByUserIdFk(userId);
+        }
+        return leadRepository.findByUserIdFk(userId);
+    }
+
+    public Lead getLeadById(Long id) {
+        return leadRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Lead", "id", id));
+    }
+
+    public Lead createLead(LeadRequest request, Long userId,
+            MultipartFile doc, MultipartFile doc1,
+            MultipartFile doc2, MultipartFile doc3) throws IOException {
+        Lead lead = mapToEntity(request, new Lead());
+        if (request.getUserIdFk() != null) {
+            lead.setUserIdFk(request.getUserIdFk());
+        } else {
+            lead.setUserIdFk(userId);
+        }
+        lead.setLeadCreatedDate(LocalDateTime.now());
+        lead.setUploadDocument(fileUploadUtil.upload(doc));
+        lead.setUploadDocument1(fileUploadUtil.upload(doc1));
+        lead.setUploadDocument2(fileUploadUtil.upload(doc2));
+        lead.setUploadDocument3(fileUploadUtil.upload(doc3));
+        Lead saved = leadRepository.save(lead);
+        if ("Qualified".equals(saved.getEnquiryType())) {
+            createSalesTaskIfNotExist(saved, saved.getUserIdFk() != null ? saved.getUserIdFk() : userId);
+        }
+        if ("Won".equals(saved.getLeadOutcomeStatus())) {
+            createProjectTaskIfNotExist(saved, saved.getUserIdFk() != null ? saved.getUserIdFk() : userId);
+        }
+        leadScoringService.scoreAndCache(saved.getLeadId());
+        return saved;
+    }
+
+    // public Lead updateLead(Long id, LeadRequest request, Long userId,
+    //         MultipartFile doc, MultipartFile doc1,
+    //         MultipartFile doc2, MultipartFile doc3) throws IOException {
+    //     Lead lead = getLeadById(id);
+    //     saveNegotiationRevision(lead);
+    //     mapToEntity(request, lead);
+    //     if ("Qualified".equalsIgnoreCase(lead.getLeadStatus())) {
+    //         if (lead.getLeadOutcomeStatus() == null
+    //                 || lead.getLeadOutcomeStatus().isBlank()) {
+    //             lead.setLeadOutcomeStatus("Open");
+    //         }
+    //         if (lead.getEnquiryStatus() == null
+    //                 || lead.getEnquiryStatus().isBlank()) {
+    //             lead.setEnquiryStatus("Pending");
+    //         }
+    //     }
+    //     if ("Disqualified".equalsIgnoreCase(lead.getLeadStatus())) {
+    //         lead.setLeadOutcomeStatus(null);
+    //         lead.setEnquiryStatus(null);
+    //     }
+    //     if (request.getUserIdFk() != null) {
+    //         lead.setUserIdFk(request.getUserIdFk());
+    //     }
+    //     if (doc != null && !doc.isEmpty()) {
+    //         String path = fileUploadUtil.upload(doc);
+    //         System.out.println("UPLOAD PATH = " + path);
+    //         lead.setUploadDocument(path);
+    //     }
+    //     if (doc1 != null && !doc1.isEmpty()) {
+    //         lead.setUploadDocument1(fileUploadUtil.upload(doc1));
+    //     }
+    //     if (doc2 != null && !doc2.isEmpty()) {
+    //         lead.setUploadDocument2(fileUploadUtil.upload(doc2));
+    //     }
+    //     if (doc3 != null && !doc3.isEmpty()) {
+    //         lead.setUploadDocument3(fileUploadUtil.upload(doc3));
+    //     }
+    //     Lead saved = leadRepository.save(lead);
+    //     return saved;
+    // }
+    public Lead updateLead(Long id, LeadRequest request, Long userId,
+            MultipartFile doc, MultipartFile doc1,
+            MultipartFile doc2, MultipartFile doc3) throws IOException {
+
+        Lead lead = getLeadById(id);
+
+        saveNegotiationRevision(lead);
+
+        // Update Lead fields
+        mapToEntity(request, lead);
+
+        // Save current values before updating (Revision History)
+        if ("Qualified".equalsIgnoreCase(lead.getLeadStatus())) {
+
+            if (lead.getLeadOutcomeStatus() == null
+                    || lead.getLeadOutcomeStatus().isBlank()) {
+                lead.setLeadOutcomeStatus("Open");
+            }
+
+            if (lead.getEnquiryStatus() == null
+                    || lead.getEnquiryStatus().isBlank()) {
+                lead.setEnquiryStatus("Pending");
+            }
+        }
+
+        if ("Disqualified".equalsIgnoreCase(lead.getLeadStatus())) {
+            lead.setLeadOutcomeStatus(null);
+            lead.setEnquiryStatus(null);
+        }
+
+        if (request.getUserIdFk() != null) {
+            lead.setUserIdFk(request.getUserIdFk());
+        }
+
+        // Upload Documents
+        if (doc != null && !doc.isEmpty()) {
+            lead.setUploadDocument(fileUploadUtil.upload(doc));
+        }
+
+        if (doc1 != null && !doc1.isEmpty()) {
+            lead.setUploadDocument1(fileUploadUtil.upload(doc1));
+        }
+
+        if (doc2 != null && !doc2.isEmpty()) {
+            lead.setUploadDocument2(fileUploadUtil.upload(doc2));
+        }
+
+        if (doc3 != null && !doc3.isEmpty()) {
+            lead.setUploadDocument3(fileUploadUtil.upload(doc3));
+        }
+
+        // Save Lead
+        Lead saved = leadRepository.save(lead);
+
+        // ==========================
+        // Sync Negotiation Table
+        // ==========================
+        Negotiation negotiation = negotiationRepository
+                .findFirstByLeadIdFk(saved.getLeadId())
+                .orElse(null);
+
+        if (negotiation != null) {
+
+            negotiation.setNegotiationName(saved.getLeadOrganisationName());
+            negotiation.setNegotiationTitle(saved.getLeadTitle());
+
+            negotiation.setQuotationNo(saved.getQuotationNumber());
+            negotiation.setQuotationRevision(saved.getQuotationRevision());
+            negotiation.setQuotationAmount(saved.getQuotationAmount());
+
+            negotiation.setRemarks(saved.getFollowUpRemark());
+
+            if (saved.getLeadOutcomeStatus() != null
+                    && !saved.getLeadOutcomeStatus().isBlank()) {
+                negotiation.setNegotiationStatus(saved.getLeadOutcomeStatus());
+            }
+
+            negotiationRepository.save(negotiation);
+        }
+
+        return saved;
+    }
+
+    @Transactional
+    public void deleteLead(Long id) {
+        Lead lead = getLeadById(id);
+        leadNoteRepository.deleteByLeadIdFk(id);
+        leadReminderRepository.deleteByLeadIdFk(id);
+        leadScoreRepository.deleteByLeadIdFk(id);
+        opportunityRepository.deleteByLeadIdFk(id);
+        leadRepository.delete(lead);
+    }
+
+    public Lead updateLeadStatus(Long id, String status) {
+
+        Lead lead = getLeadById(id);
+
+        lead.setLeadStatus(status);
+
+        if ("Qualified".equalsIgnoreCase(status)) {
+
+            lead.setEnquiryType("Qualified");
+
+            // Auto set
+            lead.setLeadOutcomeStatus("Open");
+            lead.setEnquiryStatus("Pending");
+
+            createSalesTaskIfNotExist(
+                    lead,
+                    lead.getUserIdFk() != null ? lead.getUserIdFk() : 1L
+            );
+
+        } else if ("Disqualified".equalsIgnoreCase(status)) {
+
+            lead.setEnquiryType("Disqualified");
+
+            // Auto clear
+            lead.setLeadOutcomeStatus(null);
+            lead.setEnquiryStatus(null);
+
+        } else if ("Won".equalsIgnoreCase(status)) {
+
+            createProjectTaskIfNotExist(
+                    lead,
+                    lead.getUserIdFk() != null ? lead.getUserIdFk() : 1L
+            );
+        }
+
+        Lead saved = leadRepository.save(lead);
+
+        leadScoringService.scoreAndCache(saved.getLeadId());
+
+        return saved;
+    }
+
+    public Lead updateLeadGroup(Long id, String group) {
+        Lead lead = getLeadById(id);
+        lead.setLeadGroup(group);
+        return leadRepository.save(lead);
+    }
+
+    public Lead updateLeadEnquiryStatus(Long id, String status) {
+        Lead lead = getLeadById(id);
+        lead.setEnquiryStatus(status);
+        return leadRepository.save(lead);
+    }
+
+    public Lead updateLeadOutcomeStatus(Long id, String leadOutcomeStatus) {
+
+        Lead lead = leadRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Lead not found with id: " + id));
+
+        lead.setLeadOutcomeStatus(leadOutcomeStatus);
+
+        Lead saved = leadRepository.save(lead);
+
+        if ("Negotiation".equalsIgnoreCase(leadOutcomeStatus)) {
+
+            Negotiation negotiation = negotiationRepository
+                    .findFirstByLeadIdFk(saved.getLeadId())
+                    .orElse(null);
+
+            if (negotiation == null) {
+
+                negotiation = Negotiation.builder()
+                        .leadIdFk(saved.getLeadId())
+                        .negotiationName(saved.getLeadOrganisationName())
+                        .negotiationTitle(saved.getLeadTitle())
+                        .quotationNo(saved.getQuotationNumber())
+                        .quotationRevision(saved.getQuotationRevision())
+                        .quotationAmount(saved.getQuotationAmount())
+                        .remarks(saved.getFollowUpRemark())
+                        .negotiationStatus("Negotiation")
+                        .userIdFk(saved.getUserIdFk())
+                        .build();
+
+            } else {
+
+                negotiation.setNegotiationName(saved.getLeadOrganisationName());
+                negotiation.setNegotiationTitle(saved.getLeadTitle());
+                negotiation.setQuotationNo(saved.getQuotationNumber());
+                negotiation.setQuotationRevision(saved.getQuotationRevision());
+                negotiation.setQuotationAmount(saved.getQuotationAmount());
+                negotiation.setRemarks(saved.getFollowUpRemark());
+                negotiation.setNegotiationStatus("Negotiation");
+            }
+
+            negotiationRepository.save(negotiation);
+        }
+
+        return saved;
+    }
+
+    public List<Lead> getLeadsByStatus(String status, Long userId, String role) {
+        if (authUtil.isSuperAdmin(role)) {
+            return leadRepository.findByLeadStatus(status);
+        }
+        if (authUtil.isAdmin(role)) {
+            return leadRepository.findByUserIdFkAndLeadStatus(userId, status);
+        }
+        return leadRepository.findByLeadAssignedMemberAndLeadStatus(userId, status);
+    }
+
+    public List<LeadNote> getNotes(Long leadId) {
+        getLeadById(leadId);
+        return leadNoteRepository.findByLeadIdFkOrderByNoteDateDesc(leadId);
+    }
+
+    public List<LeadNote> getAllNotes() {
+        return leadNoteRepository.findAllByOrderByNoteDateDesc();
+    }
+
+    public LeadNote addNote(Long leadId, String noteText, Long userId) {
+        getLeadById(leadId);
+        LeadNote note = LeadNote.builder()
+                .leadIdFk(leadId)
+                .noteText(noteText)
+                .noteDate(LocalDateTime.now())
+                .userIdFk(userId)
+                .build();
+        return leadNoteRepository.save(note);
+    }
+
+    public List<LeadReminder> getReminders(Long leadId) {
+        getLeadById(leadId);
+        return leadReminderRepository.findByLeadIdFkOrderByReminderDate(leadId);
+    }
+
+    public LeadReminder addReminder(Long leadId, String reminderText, String reminderDate, Long userId) {
+        getLeadById(leadId);
+        LeadReminder reminder = LeadReminder.builder()
+                .leadIdFk(leadId)
+                .reminderText(reminderText)
+                .reminderDate(reminderDate != null
+                        ? java.time.LocalDateTime
+                                .parse(reminderDate.length() == 10 ? reminderDate + "T00:00:00" : reminderDate)
+                        : LocalDateTime.now())
+                .userIdFk(userId)
+                .build();
+        return leadReminderRepository.save(reminder);
+    }
+
+    public Opportunity convertToOpportunity(Long leadId, Long userId) {
+        Lead lead = getLeadById(leadId);
+        if (AppConstants.LEAD_STATUS_CONVERTED.equals(lead.getLeadStatus())) {
+            throw new BadRequestException("Lead is already converted");
+        }
+        lead.setLeadStatus(AppConstants.LEAD_STATUS_CONVERTED);
+        leadRepository.save(lead);
+
+        Opportunity opp = Opportunity.builder()
+                .oppName(lead.getLeadFirstName() + " " + lead.getLeadLastName())
+                .oppTitle(lead.getLeadTitle())
+                .oppStatus(AppConstants.OPP_STATUS_OPEN)
+                .leadIdFk(leadId)
+                .userIdFk(userId)
+                .build();
+        return opportunityRepository.save(opp);
+    }
+
+    @Transactional
+    @SuppressWarnings("unchecked")
+    public List<Lead> importFromIndiamart(ImportLeadRequest request, Long userId) {
+        validateImportRequest(request);
+
+        try {
+            String finalUrl = indiamartUrl;
+            String finalApiKey = indiamartApiKey;
+
+            Optional<IntegrationConfig> configOpt = integrationConfigRepository.findByNameAndUserIdFk("INDIAMART",
+                    userId);
+            if (configOpt.isPresent() && configOpt.get().isEnabled()) {
+                IntegrationConfig config = configOpt.get();
+                if (config.getApiUrl() != null && !config.getApiUrl().trim().isEmpty()) {
+                    finalUrl = config.getApiUrl();
+                }
+                if (config.getApiKey() != null && !config.getApiKey().trim().isEmpty()) {
+                    finalApiKey = config.getApiKey();
+                }
+            }
+
+            String url = UriComponentsBuilder.fromHttpUrl(finalUrl)
+                    .queryParam("glusr_crm_key", finalApiKey)
+                    .queryParam("start_time", formatIndiamartDate(request.getFromDate()))
+                    .queryParam("end_time", formatIndiamartDate(request.getToDate()))
+                    .build()
+                    .toUriString();
+
+            Map<String, Object> response = webClient.get()
+                    .uri(url)
+                    .retrieve()
+                    .bodyToMono(Map.class)
+                    .block();
+
+            List<Map<String, Object>> data = extractIndiamartLeads(response);
+            List<Lead> imported = new ArrayList<>();
+
+            for (Map<String, Object> item : data) {
+                String queryId = text(item, "UNIQUE_QUERY_ID");
+                if (queryId.isBlank() || leadRepository.existsByUniqueQueryId(queryId)) {
+                    continue;
+                }
+
+                Lead lead = Lead.builder()
+                        .leadFirstName(text(item, "SENDER_NAME"))
+                        .leadEmail(text(item, "SENDER_EMAIL"))
+                        .leadMobileNo(text(item, "SENDER_MOBILE"))
+                        .leadPhoneNo(text(item, "SENDER_PHONE"))
+                        .leadOrganisationName(text(item, "SENDER_COMPANY"))
+                        .leadAddress(text(item, "SENDER_ADDRESS"))
+                        .leadCity(text(item, "SENDER_CITY"))
+                        .leadState(text(item, "SENDER_STATE"))
+                        .leadCountry(text(item, "SENDER_COUNTRY_ISO"))
+                        .leadTitle(firstPresent(item, "SUBJECT", "QUERY_PRODUCT_NAME"))
+                        .leadReason(text(item, "QUERY_MESSAGE"))
+                        .uniqueQueryId(queryId)
+                        .leadSource(AppConstants.INDIAMART_SOURCE)
+                        .leadType(AppConstants.INDIAMART_DEFAULT_TYPE)
+                        .leadStatus(AppConstants.INDIAMART_DEFAULT_STATUS)
+                        .inquiryDate(parseInquiryDate(item))
+                        .leadCreatedDate(LocalDateTime.now())
+                        .userIdFk(userId)
+                        .build();
+                Lead saved = leadRepository.save(lead);
+                refreshLeadScore(saved);
+                imported.add(saved);
+            }
+
+            log.info("Imported {} new Indiamart lead(s) between {} and {}",
+                    imported.size(), request.getFromDate(), request.getToDate());
+            return imported;
+        } catch (Exception e) {
+            log.error("Indiamart import error", e);
+            throw new BadRequestException("Failed to import leads from Indiamart: " + e.getMessage());
+        }
+    }
+
+    private void validateImportRequest(ImportLeadRequest request) {
+        if (request.getFromDate() == null || request.getToDate() == null) {
+            throw new BadRequestException("Both From Date and To Date are required.");
+        }
+        if (request.getFromDate().isAfter(request.getToDate())) {
+            throw new BadRequestException("From Date cannot be later than To Date.");
+        }
+        if (indiamartApiKey == null || indiamartApiKey.isBlank()) {
+            throw new BadRequestException("Indiamart API key is not configured.");
+        }
+        if (indiamartUrl == null || indiamartUrl.isBlank()) {
+            throw new BadRequestException("Indiamart API URL is not configured.");
+        }
+    }
+
+    private String formatIndiamartDate(LocalDate date) {
+        return INDIAMART_DATE_FORMAT.format(date).toUpperCase(Locale.ENGLISH);
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> extractIndiamartLeads(Map<String, Object> response) {
+        if (response == null || response.isEmpty()) {
+            return List.of();
+        }
+
+        Object code = response.get("CODE");
+        if (code != null && !isSuccessfulCode(code)) {
+            String message = firstPresent(response, "MESSAGE", "STATUS", "ERROR_MESSAGE");
+            throw new BadRequestException(message.isBlank() ? "Indiamart returned error code " + code : message);
+        }
+
+        Object leads = response.get("RESPONSE");
+        if (!(leads instanceof List)) {
+            leads = response.get("DATA");
+        }
+        if (!(leads instanceof List<?> list)) {
+            return List.of();
+        }
+
+        List<Map<String, Object>> parsed = new ArrayList<>();
+        for (Object item : list) {
+            if (item instanceof Map<?, ?> map) {
+                parsed.add((Map<String, Object>) map);
+            }
+        }
+        return parsed;
+    }
+
+    private String firstPresent(Map<String, Object> item, String... keys) {
+        for (String key : keys) {
+            String value = text(item, key);
+            if (!value.isBlank()) {
+                return value;
+            }
+        }
+        return "";
+    }
+
+    private String text(Map<String, Object> item, String key) {
+        Object value = item.get(key);
+        return value == null ? "" : String.valueOf(value).trim();
+    }
+
+    private boolean isSuccessfulCode(Object code) {
+        if (code instanceof Number number) {
+            return number.intValue() == 200;
+        }
+        return "200".equals(String.valueOf(code).trim());
+    }
+
+    private LocalDate parseInquiryDate(Map<String, Object> item) {
+        String value = firstPresent(item, "QUERY_TIME", "QUERY_DATE", "DATE_RE");
+        if (value.isBlank()) {
+            return LocalDate.now();
+        }
+
+        List<DateTimeFormatter> formats = List.of(
+                caseInsensitiveFormatter("dd-MMM-yyyy"),
+                caseInsensitiveFormatter("dd-MMM-yyyy HH:mm:ss"),
+                DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss", Locale.ENGLISH),
+                DateTimeFormatter.ISO_LOCAL_DATE);
+
+        for (DateTimeFormatter formatter : formats) {
+            try {
+                if (formatter == DateTimeFormatter.ISO_LOCAL_DATE) {
+                    return LocalDate.parse(value, formatter);
+                }
+                if (value.length() > 11) {
+                    return LocalDateTime.parse(value, formatter).toLocalDate();
+                }
+                return LocalDate.parse(value, formatter);
+            } catch (DateTimeParseException ignored) {
+                // Try the next known IndiaMART date shape.
+            }
+        }
+        return LocalDate.now();
+    }
+
+    private DateTimeFormatter caseInsensitiveFormatter(String pattern) {
+        return new DateTimeFormatterBuilder()
+                .parseCaseInsensitive()
+                .appendPattern(pattern)
+                .toFormatter(Locale.ENGLISH);
+    }
+
+    private void refreshLeadScore(Lead lead) {
+        try {
+            leadScoringService.scoreAndCache(lead.getLeadId());
+        } catch (Exception e) {
+            log.warn("Lead {} imported but score refresh failed: {}", lead.getLeadId(), e.getMessage());
+        }
+    }
+
+    private Lead mapToEntity(LeadRequest req, Lead lead) {
+        lead.setLeadFirstName(req.getLeadFirstName());
+        lead.setLeadLastName(req.getLeadLastName());
+        lead.setLeadTitle(req.getLeadTitle());
+        lead.setLeadAddress(req.getLeadAddress());
+        lead.setLeadCity(req.getLeadCity());
+        lead.setLeadState(req.getLeadState());
+        lead.setLeadCountry(req.getLeadCountry());
+        lead.setLeadMobileNo(req.getLeadMobileNo());
+        lead.setLeadPhoneNo(req.getLeadPhoneNo());
+        lead.setLeadEmail(req.getLeadEmail());
+        lead.setLeadOrganisationName(req.getLeadOrganisationName());
+        lead.setLeadWebsite(req.getLeadWebsite());
+        lead.setLeadIndustry(req.getLeadIndustry());
+        lead.setNoOfEmployee(req.getNoOfEmployee());
+        lead.setLeadStatus(req.getLeadStatus());
+        lead.setLeadSource(req.getLeadSource());
+        lead.setLeadType(req.getLeadType());
+        lead.setLeadReason(req.getLeadReason());
+        lead.setDesignation(req.getDesignation());
+        lead.setInquiryDate(req.getInquiryDate());
+        lead.setLeadAssignedTeam(req.getLeadAssignedTeam());
+        lead.setLeadAssignedMember(req.getLeadAssignedMember());
+        if (req.getLeadRating() != null) {
+            lead.setLeadRating(req.getLeadRating());
+        }
+
+        // New fields
+        lead.setEnquiryDescription(req.getEnquiryDescription());
+        if (req.getEnquiryType() != null) {
+            lead.setEnquiryType(req.getEnquiryType());
+        }
+        lead.setCompanyContactPersonName(req.getCompanyContactPersonName());
+        lead.setQuotationNumber(req.getQuotationNumber());
+        lead.setQuotationDate(req.getQuotationDate());
+        lead.setQuotationSentDate(req.getQuotationSentDate());
+        lead.setQuotationAmount(req.getQuotationAmount());
+        lead.setFollowUpRemark(req.getFollowUpRemark());
+        lead.setOngoingPriority(req.getOngoingPriority());
+        lead.setLeadGroup(req.getLeadGroup());
+        lead.setLeadRef(req.getLeadRef());
+        lead.setEnquiryStatus(req.getEnquiryStatus());
+
+        if (req.getLeadOutcomeStatus() != null
+                && !req.getLeadOutcomeStatus().isBlank()) {
+            lead.setLeadOutcomeStatus(req.getLeadOutcomeStatus());
+        }
+
+        String quotationNumber = lead.getQuotationNumber(); // current DB value
+        String quotationRevision = req.getQuotationRevision();
+
+        if (quotationNumber != null && quotationRevision != null) {
+            quotationNumber = quotationNumber.replaceAll("/R\\d+$", "");
+            quotationNumber = quotationNumber + "/" + quotationRevision;
+
+            lead.setQuotationNumber(quotationNumber);
+            lead.setQuotationRevision(quotationRevision);
+        }
+
+        lead.setQuotationNumber(quotationNumber);
+        lead.setQuotationRevision(quotationRevision);
+
+        // lead.setQuotationRevision(req.getQuotationRevision());
+        // Adjust lead status based on enquiry type
+        if ("Qualified".equals(req.getEnquiryType())) {
+            String currentStatus = lead.getLeadStatus();
+            if (currentStatus == null
+                    || currentStatus.equals("New Lead")
+                    || currentStatus.equals("NotContacted")
+                    || currentStatus.equals("Contacted")
+                    || currentStatus.equals("Working")
+                    || currentStatus.isEmpty()) {
+                lead.setLeadStatus("Qualified");
+            }
+        } else if ("Disqualified".equals(req.getEnquiryType())) {
+            lead.setLeadStatus("Disqualified");
+        }
+
+        return lead;
+    }
+
+    private void createSalesTaskIfNotExist(Lead lead, Long userId) {
+        String relatedTo = "Lead #" + lead.getLeadId();
+        List<Task> existing = taskRepository.findByTaskRelatedTo(relatedTo);
+        boolean hasSalesTask = existing.stream()
+                .anyMatch(t -> "Sales Call".equals(t.getTaskType()) || "Sales".equals(t.getTaskType()));
+        if (!hasSalesTask) {
+            String clientName = (lead.getLeadFirstName() != null ? lead.getLeadFirstName() : "") + " "
+                    + (lead.getLeadLastName() != null ? lead.getLeadLastName() : "");
+            clientName = clientName.trim();
+            if (clientName.isEmpty()) {
+                clientName = "Client";
+            }
+            String company = lead.getLeadOrganisationName() != null ? lead.getLeadOrganisationName()
+                    : "Unknown Company";
+
+            Task task = Task.builder()
+                    .taskName("Sales: Follow up with " + clientName + " (" + company + ")")
+                    .taskAssignedMember(lead.getLeadAssignedMember())
+                    .taskAssignedTo(lead.getLeadAssignedMember())
+                    .taskAssign("To Do")
+                    .taskStartDate(LocalDate.now())
+                    .taskDueDate(LocalDate.now().plusDays(2))
+                    .taskRelatedTo(relatedTo)
+                    .taskDescription("Auto-generated Sales Task for Qualified Lead.\n"
+                            + "Enquiry Details:\n"
+                            + "Description: " + (lead.getEnquiryDescription() != null ? lead.getEnquiryDescription() : "")
+                            + "\n"
+                            + "Contact Person: "
+                            + (lead.getCompanyContactPersonName() != null ? lead.getCompanyContactPersonName() : "")
+                            + "\n"
+                            + "Phone: " + (lead.getLeadMobileNo() != null ? lead.getLeadMobileNo() : "") + "\n"
+                            + "Email: " + (lead.getLeadEmail() != null ? lead.getLeadEmail() : ""))
+                    .taskPriority("High")
+                    .taskPercentageCompleted(0)
+                    .taskType("Sales Call")
+                    .taskPhone(lead.getLeadMobileNo())
+                    .taskEmail(lead.getLeadEmail())
+                    .userIdFk(userId)
+                    .taskCreatedBy("System")
+                    .build();
+            taskRepository.save(task);
+        }
+    }
+
+    private void createProjectTaskIfNotExist(Lead lead, Long userId) {
+        String relatedTo = "Lead #" + lead.getLeadId();
+        List<Task> existing = taskRepository.findByTaskRelatedTo(relatedTo);
+        boolean hasProjectTask = existing.stream()
+                .anyMatch(t -> "Development".equals(t.getTaskType()) || "Project".equals(t.getTaskType()));
+        if (!hasProjectTask) {
+            String clientName = (lead.getLeadFirstName() != null ? lead.getLeadFirstName() : "") + " "
+                    + (lead.getLeadLastName() != null ? lead.getLeadLastName() : "");
+            clientName = clientName.trim();
+            if (clientName.isEmpty()) {
+                clientName = "Client";
+            }
+            String company = lead.getLeadOrganisationName() != null ? lead.getLeadOrganisationName()
+                    : "Unknown Company";
+
+            Task task = Task.builder()
+                    .taskName("Project Delivery: " + clientName + " (" + company + ")")
+                    .taskAssignedMember(lead.getLeadAssignedMember())
+                    .taskAssignedTo(lead.getLeadAssignedMember())
+                    .taskAssign("To Do")
+                    .taskStartDate(LocalDate.now())
+                    .taskDueDate(LocalDate.now().plusWeeks(1))
+                    .taskRelatedTo(relatedTo)
+                    .taskDescription("Auto-generated Project Task for WON Lead.\n"
+                            + "Quotation Details:\n"
+                            + "Quotation Number: "
+                            + (lead.getQuotationNumber() != null ? lead.getQuotationNumber() : "N/A") + "\n"
+                            + "Quotation Amount: "
+                            + (lead.getQuotationAmount() != null ? lead.getQuotationAmount().toString() : "N/A") + "\n"
+                            + "Quotation Date: "
+                            + (lead.getQuotationDate() != null ? lead.getQuotationDate().toString() : "N/A"))
+                    .taskPriority("High")
+                    .taskPercentageCompleted(0)
+                    .taskType("Development")
+                    .taskPhone(lead.getLeadMobileNo())
+                    .taskEmail(lead.getLeadEmail())
+                    .userIdFk(userId)
+                    .taskCreatedBy("System")
+                    .build();
+            taskRepository.save(task);
+        }
+    }
+
+    public Negotiation convertToNegotiation(Long leadId, Long userId) {
+
+        List<Negotiation> existing = negotiationRepository.findByLeadIdFk(leadId);
+
+        if (!existing.isEmpty()) {
+            throw new BadRequestException("Lead already converted to negotiation");
+        }
+
+        Lead lead = getLeadById(leadId);
+
+        lead.setLeadOutcomeStatus("Negotiation");
+        leadRepository.save(lead);
+
+        Negotiation negotiation = Negotiation.builder()
+                .leadIdFk(lead.getLeadId())
+                .negotiationName(lead.getLeadOrganisationName())
+                .negotiationTitle(lead.getLeadTitle())
+                .quotationNo(lead.getQuotationNumber())
+                .quotationRevision(lead.getQuotationRevision())
+                .quotationAmount(lead.getQuotationAmount())
+                .remarks(lead.getFollowUpRemark())
+                .negotiationStatus("Negotiation")
+                .userIdFk(userId)
+                .build();
+
+        return negotiationRepository.save(negotiation);
+    }
+
+    private void saveNegotiationRevision(Lead lead) {
+
+        Negotiation negotiation = negotiationRepository
+                .findFirstByLeadIdFk(lead.getLeadId())
+                .orElse(null);
+
+        if (negotiation == null) {
+            return;
+        }
+
+        NegotiationRevision revision = new NegotiationRevision();
+
+        revision.setNegotiationId(negotiation.getId());
+        revision.setLeadIdFk(lead.getLeadId());
+
+        // Save Lead values
+        revision.setQuotationNo(lead.getQuotationNumber());
+        revision.setQuotationRevision(lead.getQuotationRevision());
+        revision.setQuotationAmount(lead.getQuotationAmount());
+        revision.setRemarks(lead.getFollowUpRemark());
+        revision.setEnquiryDescription(lead.getEnquiryDescription());
+        revision.setQuotationDate(lead.getQuotationDate());
+        revision.setQuotationRevision(lead.getQuotationRevision());
+        // Save Negotiation values
+        revision.setNegotiationStatus(negotiation.getNegotiationStatus());
+        revision.setUserIdFk(negotiation.getUserIdFk());
+
+        revision.setUpdatedDate(LocalDateTime.now());
+
+        negotiationRevisionRepository.save(revision);
+    }
+
+    // Update Lead Rating
+    @Transactional
+    public Lead updateLeadRating(Long leadId, Integer rating) {
+        Optional<Lead> leadOptional = leadRepository.findById(leadId);
+
+        if (leadOptional.isEmpty()) {
+            return null;
+        }
+
+        Lead lead = leadOptional.get();
+        lead.setLeadRating(rating);
+        // lead.setUpdatedAt(LocalDateTime.now());
+
+        return leadRepository.save(lead);
+    }
+}
