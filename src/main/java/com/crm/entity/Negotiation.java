@@ -41,4 +41,13 @@ public class Negotiation {
     private String remarks;
 
     private Long userIdFk;
+    
+    
+// ========== NEW DOCUMENT FIELDS ==========
+    
+    @Column(name = "document", length = 255)
+    private String document;  // Stores the filename only (e.g., "64ef6496-3a8c-4d1e-a3d6-a3d99bcf7f41.jpg")
+
+    @Column(name = "document_url", length = 500)
+    private String documentUrl;  // Stores the full URL to access the document
 }

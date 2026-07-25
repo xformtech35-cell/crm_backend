@@ -1,29 +1,44 @@
 package com.crm.controller;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.ArrayList;
-import java.util.HashMap;
 
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.UrlResource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.crm.dto.response.ApiResponse;
+import com.crm.entity.Document;
 import com.crm.entity.Lead;
 import com.crm.entity.Negotiation;
 import com.crm.entity.NegotiationRevision;
+import com.crm.repository.DocumentRepository;
 import com.crm.repository.LeadRepository;
 import com.crm.repository.NegotiationRepository;
 import com.crm.repository.NegotiationRevisionRepository;
+import com.crm.service.NegotiationService;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/negotiations")
 @RequiredArgsConstructor
@@ -31,9 +46,15 @@ public class NegotiationController {
 
     private final NegotiationRepository negotiationRepository;
     private final LeadRepository leadRepository;
+    
+    private final NegotiationService negotiationService;
+    private final DocumentRepository documentRepository;
+
 
     private final NegotiationRevisionRepository negotiationRevisionRepository;
-
+    
+    @Value("${app.upload.dir}")
+    private String uploadDir;
     // @GetMapping("/user/{userId}")
     // public ResponseEntity<ApiResponse<List<java.util.Map<String, Object>>>> getByUser(@PathVariable Long userId) {
     //     List<Negotiation> negotiations = negotiationRepository.findByUserIdFk(userId);
@@ -184,6 +205,30 @@ public ResponseEntity<ApiResponse<Lead>> getDetails(@PathVariable Long id) {
             map.put("enquiryDescription", rev.getEnquiryDescription());
             map.put("quotationDate", rev.getQuotationDate());
             map.put("updatedDate", rev.getUpdatedDate());
+            
+            // Get documents using quotationNo instead of revision ID
+            String quotationNo = rev.getQuotationNo();
+            List<Document> documents = documentRepository.findByQuotationNo(quotationNo);
+            
+            // Add document details
+            if (documents != null && !documents.isEmpty()) {
+                List<Map<String, Object>> docList = new ArrayList<>();
+                for (Document doc : documents) {
+                    Map<String, Object> docMap = new HashMap<>();
+                    docMap.put("id", doc.getId());
+                    docMap.put("fileName", doc.getFileName());
+                    docMap.put("fileSize", doc.getFileSize());
+                    docMap.put("fileType", doc.getFileType());
+                    docMap.put("uploadedDate", doc.getUploadedDate());
+                    docMap.put("fileUrl", doc.getFileUrl()); // Add file URL for viewing
+                    docList.add(docMap);
+                }
+                map.put("documents", docList);
+                map.put("documentCount", documents.size());
+            } else {
+                map.put("documents", new ArrayList<>());
+                map.put("documentCount", 0);
+            }
 
             list.add(map);
         }
@@ -235,4 +280,134 @@ public ResponseEntity<ApiResponse<Lead>> getDetails(@PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.success("Negotiation deleted", null));
     }
 
+    
+    
+    // ✅ POST - Upload Document (Already Working)
+    @PostMapping(value = "/{id}/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse<String>> uploadDocument(
+            @PathVariable Long id,
+            @RequestParam("file") MultipartFile file) {
+        try {
+            log.info("Uploading file for negotiation ID: {}", id);
+            String filename = negotiationService.uploadDocument(id, file);
+            log.info("File uploaded successfully: {}", filename);
+            return ResponseEntity.ok(ApiResponse.success("File uploaded successfully", filename));
+        } catch (Exception e) {
+            log.error("Upload failed: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(ApiResponse.error("Upload failed: " + e.getMessage()));
+        }
+    }
+
+    // ✅ GET - Get Document by Negotiation ID (FIXED)
+    @GetMapping("/{id}/document")
+    public ResponseEntity<?> getDocument(@PathVariable Long id) {
+        try {
+            log.info("Getting document for negotiation ID: {}", id);
+            
+            // Get the filename from database
+            String filename = negotiationService.getDocumentFilename(id);
+            log.info("Filename from database: {}", filename);
+            
+            if (filename == null || filename.isBlank()) {
+                log.warn("No document found for negotiation ID: {}", id);
+                return ResponseEntity.notFound().build();
+            }
+
+            // Build the file path
+            Path uploadPath = Paths.get(uploadDir).toAbsolutePath();
+            Path filePath = uploadPath.resolve(filename);
+            
+            log.info("Looking for file at: {}", filePath);
+            
+            // Check if file exists
+            if (!Files.exists(filePath)) {
+                log.warn("File not found on disk: {}", filePath);
+                return ResponseEntity.notFound().build();
+            }
+
+            // Create resource
+            Resource resource = new UrlResource(filePath.toUri());
+            if (!resource.exists() || !resource.isReadable()) {
+                log.warn("Resource not readable: {}", filePath);
+                return ResponseEntity.notFound().build();
+            }
+
+            // Determine content type
+            String contentType = determineContentType(filename);
+            log.info("Content type: {}", contentType);
+            
+            return ResponseEntity.ok()
+                    .contentType(MediaType.parseMediaType(contentType))
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + filename + "\"")
+                    .header(HttpHeaders.CACHE_CONTROL, "no-cache, no-store, must-revalidate")
+                    .body(resource);
+                    
+        } catch (Exception e) {
+            log.error("Error retrieving document: {}", e.getMessage());
+            return ResponseEntity.internalServerError().body("Error retrieving document: " + e.getMessage());
+        }
+    }
+
+    // ✅ GET - Get Document by Filename (Alternative)
+    @GetMapping("/document/{filename}")
+    public ResponseEntity<?> getDocumentByFilename(@PathVariable String filename) {
+        try {
+            log.info("Getting document by filename: {}", filename);
+            
+            Path uploadPath = Paths.get(uploadDir).toAbsolutePath();
+            Path filePath = uploadPath.resolve(filename);
+            
+            if (!Files.exists(filePath)) {
+                log.warn("File not found: {}", filePath);
+                return ResponseEntity.notFound().build();
+            }
+
+            Resource resource = new UrlResource(filePath.toUri());
+            String contentType = determineContentType(filename);
+            
+            return ResponseEntity.ok()
+                    .contentType(MediaType.parseMediaType(contentType))
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + filename + "\"")
+                    .body(resource);
+                    
+        } catch (Exception e) {
+            log.error("Error retrieving document: {}", e.getMessage());
+            return ResponseEntity.internalServerError().body("Error retrieving document: " + e.getMessage());
+        }
+    }
+
+    // ✅ DELETE - Delete Document
+    @DeleteMapping("/{id}/document")
+    public ResponseEntity<ApiResponse<Void>> deleteDocument(@PathVariable Long id) {
+        try {
+            log.info("Deleting document for negotiation ID: {}", id);
+            negotiationService.deleteDocument(id);
+            return ResponseEntity.ok(ApiResponse.success("Document deleted successfully", null));
+        } catch (Exception e) {
+            log.error("Delete failed: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(ApiResponse.error("Delete failed: " + e.getMessage()));
+        }
+    }
+
+    private String determineContentType(String filename) {
+        if (filename == null) return "application/octet-stream";
+        
+        String ext = filename.substring(filename.lastIndexOf(".") + 1).toLowerCase();
+        return switch (ext) {
+            case "jpg", "jpeg" -> "image/jpeg";
+            case "png" -> "image/png";
+            case "gif" -> "image/gif";
+            case "webp" -> "image/webp";
+            case "svg" -> "image/svg+xml";
+            case "pdf" -> "application/pdf";
+            case "doc" -> "application/msword";
+            case "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+            case "xls" -> "application/vnd.ms-excel";
+            case "xlsx" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            case "csv" -> "text/csv";
+            case "txt" -> "text/plain";
+            default -> "application/octet-stream";
+        };
+    }
+    
 }
