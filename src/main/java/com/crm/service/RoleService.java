@@ -38,10 +38,8 @@ public class RoleService {
             return roleRepository.findAll();
         }
         
-        // 1. Fetch only the company's custom roles
         List<Role> companyRoles = roleRepository.findByUserIdFk(companyAdminId);
         
-        // 2. Return the company's roles plus the core system roles (where userIdFk is null)
         List<Role> templateRoles = roleRepository.findByUserIdFk(null);
         List<Role> coreSystemRoles = templateRoles.stream()
                 .filter(r -> {
@@ -167,17 +165,21 @@ public class RoleService {
         return permissionRepository.findByRoleIdFk(roleId);
     }
 
+    // MODIFIED: This is the only method that needs to change
     @Transactional
     public List<Permission> savePermissions(Long roleId, List<String> permissionNames, User currentUser) {
         Role role = getById(roleId);
         
         if (!authUtil.isSuperAdmin(currentUser.getRole())) {
             String roleName = role.getRoleName();
-            boolean targetIsAdminOrSuper = "ADMIN".equalsIgnoreCase(roleName) || "SUPER_ADMIN".equalsIgnoreCase(roleName) || "SUPER ADMIN".equalsIgnoreCase(roleName);
-
-            if (targetIsAdminOrSuper) {
-                throw new AccessDeniedException("Only Super Admins can manage permissions for Admin or Super Admin roles");
+            boolean isSuperAdminRole = "SUPER_ADMIN".equalsIgnoreCase(roleName) || "SUPER ADMIN".equalsIgnoreCase(roleName);
+            
+            // Only block SUPER_ADMIN and SUPER ADMIN - Allow ADMIN role editing
+            if (isSuperAdminRole) {
+                throw new AccessDeniedException("Only Super Admins can manage permissions for Super Admin roles");
             }
+            
+            // Check ownership for custom roles
             if (role.getUserIdFk() != null && !role.getUserIdFk().equals(currentUser.getUserid())) {
                 throw new AccessDeniedException("Access denied: You do not own this role");
             }
