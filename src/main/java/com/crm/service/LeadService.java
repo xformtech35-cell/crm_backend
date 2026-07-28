@@ -1,41 +1,5 @@
 package com.crm.service;
 
-import com.crm.dto.request.ImportLeadRequest;
-import com.crm.dto.request.LeadRequest;
-import com.crm.entity.Lead;
-import com.crm.entity.LeadNote;
-import com.crm.entity.LeadReminder;
-import com.crm.entity.Opportunity;
-import com.crm.exception.BadRequestException;
-import com.crm.exception.ResourceNotFoundException;
-import com.crm.repository.LeadNoteRepository;
-import com.crm.repository.LeadReminderRepository;
-import com.crm.repository.LeadRepository;
-import com.crm.repository.LeadScoreRepository;
-import com.crm.repository.OpportunityRepository;
-import com.crm.repository.TaskRepository;
-import com.crm.entity.Task;
-import com.crm.util.AppConstants;
-import com.crm.util.FileUploadUtil;
-import com.crm.util.AuthUtil;
-import com.crm.entity.IntegrationConfig;
-import com.crm.repository.IntegrationConfigRepository;
-import com.crm.repository.NegotiationRepository;
-import com.crm.entity.NegotiationRevision;
-
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-
-import org.springframework.beans.factory.annotation.Value;
-
-import java.util.Optional;
-
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.multipart.MultipartFile;
-import org.springframework.web.reactive.function.client.WebClient;
-import org.springframework.web.util.UriComponentsBuilder;
-
 import java.io.IOException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -46,10 +10,43 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.util.UriComponentsBuilder;
+
+import com.crm.dto.request.ImportLeadRequest;
+import com.crm.dto.request.LeadRequest;
+import com.crm.entity.IntegrationConfig;
+import com.crm.entity.Lead;
+import com.crm.entity.LeadNote;
+import com.crm.entity.LeadReminder;
 import com.crm.entity.Negotiation;
 import com.crm.entity.NegotiationRevision;
+import com.crm.entity.Opportunity;
+import com.crm.entity.Task;
+import com.crm.exception.BadRequestException;
+import com.crm.exception.ResourceNotFoundException;
+import com.crm.repository.IntegrationConfigRepository;
+import com.crm.repository.LeadNoteRepository;
+import com.crm.repository.LeadReminderRepository;
+import com.crm.repository.LeadRepository;
+import com.crm.repository.LeadScoreRepository;
+import com.crm.repository.NegotiationRepository;
 import com.crm.repository.NegotiationRevisionRepository;
+import com.crm.repository.OpportunityRepository;
+import com.crm.repository.TaskRepository;
+import com.crm.util.AppConstants;
+import com.crm.util.AuthUtil;
+import com.crm.util.FileUploadUtil;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Service
@@ -193,26 +190,22 @@ public class LeadService {
             MultipartFile doc2, MultipartFile doc3) throws IOException {
 
         Lead lead = getLeadById(id);
-
-        saveNegotiationRevision(lead);
+        
+        // Save current state as revision before updating
 
         // Update Lead fields
         mapToEntity(request, lead);
 
-        // Save current values before updating (Revision History)
+        // Handle status transitions
         if ("Qualified".equalsIgnoreCase(lead.getLeadStatus())) {
-
-            if (lead.getLeadOutcomeStatus() == null
-                    || lead.getLeadOutcomeStatus().isBlank()) {
+            if (lead.getLeadOutcomeStatus() == null || lead.getLeadOutcomeStatus().isBlank()) {
                 lead.setLeadOutcomeStatus("Open");
             }
-
-            if (lead.getEnquiryStatus() == null
-                    || lead.getEnquiryStatus().isBlank()) {
+            if (lead.getEnquiryStatus() == null || lead.getEnquiryStatus().isBlank()) {
                 lead.setEnquiryStatus("Pending");
             }
         }
-
+        lead.setQuotationNumber(request.getQuotationNumber());
         if ("Disqualified".equalsIgnoreCase(lead.getLeadStatus())) {
             lead.setLeadOutcomeStatus(null);
             lead.setEnquiryStatus(null);
@@ -222,25 +215,30 @@ public class LeadService {
             lead.setUserIdFk(request.getUserIdFk());
         }
 
-        // Upload Documents
+        // Upload Documents with correct relative path for /api/view/ endpoint
         if (doc != null && !doc.isEmpty()) {
-            lead.setUploadDocument(fileUploadUtil.upload(doc));
+            String docUrl = uploadFileWithRelativePath(doc, lead);
+            lead.setUploadDocument(docUrl);
         }
 
         if (doc1 != null && !doc1.isEmpty()) {
-            lead.setUploadDocument1(fileUploadUtil.upload(doc1));
+            String docUrl = uploadFileWithRelativePath(doc1, lead);
+            lead.setUploadDocument1(docUrl);
         }
 
         if (doc2 != null && !doc2.isEmpty()) {
-            lead.setUploadDocument2(fileUploadUtil.upload(doc2));
+            String docUrl = uploadFileWithRelativePath(doc2, lead);
+            lead.setUploadDocument2(docUrl);
         }
 
         if (doc3 != null && !doc3.isEmpty()) {
-            lead.setUploadDocument3(fileUploadUtil.upload(doc3));
+            String docUrl = uploadFileWithRelativePath(doc3, lead);
+            lead.setUploadDocument3(docUrl);
         }
 
         // Save Lead
         Lead saved = leadRepository.save(lead);
+        saveNegotiationRevision(lead);
 
         // ==========================
         // Sync Negotiation Table
@@ -250,14 +248,11 @@ public class LeadService {
                 .orElse(null);
 
         if (negotiation != null) {
-
             negotiation.setNegotiationName(saved.getLeadOrganisationName());
             negotiation.setNegotiationTitle(saved.getLeadTitle());
-
             negotiation.setQuotationNo(saved.getQuotationNumber());
             negotiation.setQuotationRevision(saved.getQuotationRevision());
             negotiation.setQuotationAmount(saved.getQuotationAmount());
-
             negotiation.setRemarks(saved.getFollowUpRemark());
 
             if (saved.getLeadOutcomeStatus() != null
@@ -271,6 +266,148 @@ public class LeadService {
         return saved;
     }
 
+    /**
+     * Save current state as a negotiation revision before updating
+     */
+    private void saveNegotiationRevision(Lead lead) {
+        // Get the current negotiation
+        Negotiation negotiation = negotiationRepository
+                .findFirstByLeadIdFk(lead.getLeadId())
+                .orElse(null);
+
+        if (negotiation == null) {
+            return;
+        }
+
+        // Create revision from current state
+        NegotiationRevision revision = new NegotiationRevision();
+
+        // Set basic IDs
+        revision.setNegotiationId(negotiation.getId());
+        revision.setLeadIdFk(lead.getLeadId());
+
+        // Save Lead values (current state)
+        revision.setQuotationNo(lead.getQuotationNumber());
+        revision.setQuotationRevision(lead.getQuotationRevision());
+        revision.setQuotationAmount(lead.getQuotationAmount());
+        revision.setRemarks(lead.getFollowUpRemark());
+        revision.setEnquiryDescription(lead.getEnquiryDescription());
+        revision.setQuotationDate(lead.getQuotationDate());
+        
+        // Save Negotiation values (current state)
+        revision.setNegotiationStatus(negotiation.getNegotiationStatus());
+        revision.setUserIdFk(negotiation.getUserIdFk());
+
+        // Set revision timestamp
+        revision.setUpdatedDate(LocalDateTime.now());
+
+        // Save revision
+        negotiationRevisionRepository.save(revision);
+        
+        log.info("Saved negotiation revision for lead ID: {}, Negotiation ID: {}", 
+                 lead.getLeadId(), negotiation.getId());
+    }
+
+    /**
+     * Upload file and return relative path for /api/view/ endpoint
+     */
+    private String uploadFileWithRelativePath(MultipartFile file, Lead lead) throws IOException {
+        // Generate a unique filename
+        String originalFilename = file.getOriginalFilename();
+        String extension = "";
+        if (originalFilename != null && originalFilename.contains(".")) {
+            extension = originalFilename.substring(originalFilename.lastIndexOf("."));
+        }
+        String uniqueFilename = UUID.randomUUID().toString() + extension;
+        
+        // Determine subdirectory based on quotation number
+        String quotationNo = lead.getQuotationNumber();
+        String subDirectory;
+        
+        if (quotationNo != null && !quotationNo.isEmpty()) {
+            // Use quotation number - replace slashes with underscores for filesystem
+            String sanitizedQuotation = quotationNo.replace("/", "_");
+            subDirectory = "quotation/" + sanitizedQuotation;
+        } else {
+            // If no quotation number, use lead ID
+            subDirectory = "lead/" + lead.getLeadId();
+        }
+        
+        // Upload file to filesystem
+        String fullUrl = fileUploadUtil.uploadFile(file, subDirectory);
+        
+        // Extract relative path for /api/view/ endpoint
+        String relativePath = extractRelativePathForView(fullUrl, quotationNo);
+        
+        log.info("File uploaded: {} -> Relative path: {}", fullUrl, relativePath);
+        
+        return relativePath;
+    }
+
+    /**
+     * Extract relative path for /api/view/ endpoint
+     */
+    private String extractRelativePathForView(String fileUrl, String quotationNo) {
+        if (fileUrl == null || fileUrl.isEmpty()) {
+            return fileUrl;
+        }
+        
+        String relativePath = fileUrl;
+        
+        // Remove "files/" prefix if present
+        if (relativePath.startsWith("files/")) {
+            relativePath = relativePath.substring(6);
+        }
+        
+        // If it's a full URL with domain, extract the path
+        if (fileUrl.contains("://")) {
+            // Try to find /api/view/
+            int apiViewIndex = fileUrl.indexOf("/api/view/");
+            if (apiViewIndex != -1) {
+                relativePath = fileUrl.substring(apiViewIndex + 10);
+            } else {
+                // Try to find /api/
+                int apiIndex = fileUrl.indexOf("/api/");
+                if (apiIndex != -1) {
+                    relativePath = fileUrl.substring(apiIndex + 5);
+                } else {
+                    // Try to find /files/
+                    int filesIndex = fileUrl.indexOf("/files/");
+                    if (filesIndex != -1) {
+                        relativePath = fileUrl.substring(filesIndex + 7);
+                    }
+                }
+            }
+        } else if (fileUrl.contains("/api/view/")) {
+            relativePath = fileUrl.substring(fileUrl.indexOf("/api/view/") + 10);
+        } else if (fileUrl.contains("/api/")) {
+            relativePath = fileUrl.substring(fileUrl.indexOf("/api/") + 5);
+        } else if (fileUrl.contains("/files/")) {
+            relativePath = fileUrl.substring(fileUrl.indexOf("/files/") + 7);
+        }
+        
+        // Remove leading slash
+        if (relativePath.startsWith("/")) {
+            relativePath = relativePath.substring(1);
+        }
+        
+        // Remove "files/" if it's at the beginning
+        if (relativePath.startsWith("files/")) {
+            relativePath = relativePath.substring(6);
+        }
+        
+        // Convert underscores back to slashes in the quotation number part
+        if (quotationNo != null && !quotationNo.isEmpty()) {
+            String quotationWithUnderscores = quotationNo.replace("/", "_");
+            if (relativePath.contains("quotation/" + quotationWithUnderscores)) {
+                String pathWithUnderscores = "quotation/" + quotationWithUnderscores;
+                String pathWithSlashes = "quotation/" + quotationNo;
+                relativePath = relativePath.replace(pathWithUnderscores, pathWithSlashes);
+            }
+        }
+        
+        return relativePath;
+    }
     @Transactional
     public void deleteLead(Long id) {
         Lead lead = getLeadById(id);
@@ -834,37 +971,7 @@ public class LeadService {
         return negotiationRepository.save(negotiation);
     }
 
-    private void saveNegotiationRevision(Lead lead) {
-
-        Negotiation negotiation = negotiationRepository
-                .findFirstByLeadIdFk(lead.getLeadId())
-                .orElse(null);
-
-        if (negotiation == null) {
-            return;
-        }
-
-        NegotiationRevision revision = new NegotiationRevision();
-
-        revision.setNegotiationId(negotiation.getId());
-        revision.setLeadIdFk(lead.getLeadId());
-
-        // Save Lead values
-        revision.setQuotationNo(lead.getQuotationNumber());
-        revision.setQuotationRevision(lead.getQuotationRevision());
-        revision.setQuotationAmount(lead.getQuotationAmount());
-        revision.setRemarks(lead.getFollowUpRemark());
-        revision.setEnquiryDescription(lead.getEnquiryDescription());
-        revision.setQuotationDate(lead.getQuotationDate());
-        revision.setQuotationRevision(lead.getQuotationRevision());
-        // Save Negotiation values
-        revision.setNegotiationStatus(negotiation.getNegotiationStatus());
-        revision.setUserIdFk(negotiation.getUserIdFk());
-
-        revision.setUpdatedDate(LocalDateTime.now());
-
-        negotiationRevisionRepository.save(revision);
-    }
+ 
 
     // Update Lead Rating
     @Transactional

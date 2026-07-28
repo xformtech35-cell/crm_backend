@@ -38,7 +38,21 @@ public class SecurityConfig {
                         "/api/auth/**",
                         "/api/uploads/**",
                         "/api/leads/**",
-                        "/api/negotiations/**"
+                        "/api/negotiations/**",
+                        "/api/negotiations/{id}/document",
+                        "/api/negotiations/document/{filename}",
+                        "/api/negotiations/{id}/upload",
+                        "/api/leads/{id}",
+                        "/api/documents/upload/{quotationNo}",
+                        "/api/view/**",           // ✅ Add this to allow file viewing
+                        "/api/download/**",       // ✅ Add this for file downloads
+                        "/api/files/**",          // ✅ Legacy endpoint
+                        "/api-file/**", 
+                        "/api/documents/**",      // ✅ Document upload/download endpoints
+                        "/api/documents/upload",
+                        "/api/leads/{id}"
+
+                        
                     ).permitAll()
                     .anyRequest().authenticated()
                 )
