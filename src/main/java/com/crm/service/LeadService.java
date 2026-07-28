@@ -41,9 +41,16 @@ import com.crm.repository.NegotiationRepository;
 import com.crm.repository.NegotiationRevisionRepository;
 import com.crm.repository.OpportunityRepository;
 import com.crm.repository.TaskRepository;
+import com.crm.repository.TeamMemberRepository;
+import com.crm.repository.UserRepository;
+import com.crm.entity.TeamMember;
+import com.crm.entity.User;
 import com.crm.util.AppConstants;
 import com.crm.util.AuthUtil;
 import com.crm.util.FileUploadUtil;
+
+import org.springframework.data.domain.Sort;
+import java.util.HashMap;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -64,9 +71,12 @@ public class LeadService {
     private final LeadScoringService leadScoringService;
     private final AuthUtil authUtil;
     private final IntegrationConfigRepository integrationConfigRepository;
+    private final UserRepository userRepository;
+    private final TeamMemberRepository teamMemberRepository;
 
     private final NegotiationRevisionRepository negotiationRevisionRepository;
     private final NegotiationRepository negotiationRepository;
+
 
     // public LeadService() {
     //     this.leadRepository = null;
@@ -105,15 +115,79 @@ public class LeadService {
     private static final DateTimeFormatter INDIAMART_DATE_FORMAT = DateTimeFormatter.ofPattern("dd-MMM-yyyy",
             Locale.ENGLISH);
 
-    public List<Lead> getAllLeads(Long userId, String role) {
-        if (authUtil.isSuperAdmin(role)) {
-            return leadRepository.findAll();
+    public List<Long> getCompanyUserIds(Long userId, String role) {
+        if (!authUtil.isAdmin(role)) {
+            return List.of(userId);
         }
-        if (authUtil.isAdmin(role)) {
-            return leadRepository.findByUserIdFk(userId);
+
+        Long selectedTmId = authUtil.getSelectedTeamMemberId();
+        if (selectedTmId != null) {
+            Optional<TeamMember> tmOpt = teamMemberRepository.findById(selectedTmId);
+            if (tmOpt.isPresent()) {
+                Optional<User> uOpt = userRepository.findByUserEmail(tmOpt.get().getTeamMemberEmail());
+                if (uOpt.isPresent()) {
+                    return List.of(uOpt.get().getUserid());
+                }
+            }
+            return List.of(selectedTmId);
         }
-        return leadRepository.findByUserIdFk(userId);
+
+
+        Long adminId = userId;
+        List<Long> userIds = new ArrayList<>();
+        userIds.add(adminId);
+
+
+        List<TeamMember> teamMembers = teamMemberRepository.findByUserIdFk(adminId);
+        for (TeamMember tm : teamMembers) {
+            if (tm.getTeamMemberEmail() != null && !tm.getTeamMemberEmail().isBlank()) {
+                userRepository.findByUserEmail(tm.getTeamMemberEmail())
+                        .ifPresent(u -> {
+                            if (!userIds.contains(u.getUserid())) {
+                                userIds.add(u.getUserid());
+                            }
+                        });
+            }
+        }
+        return userIds;
     }
+
+    private void populateCreatorInfoIfMissing(List<Lead> leads) {
+        Map<Long, String> userDisplayMap = new HashMap<>();
+        for (Lead lead : leads) {
+            if (lead.getCreatedBy() == null || lead.getCreatedBy().isBlank()) {
+                if (lead.getUserIdFk() != null) {
+                    String display = userDisplayMap.computeIfAbsent(lead.getUserIdFk(), id -> {
+                        return userRepository.findById(id)
+                                .map(u -> u.getUserEmail() != null ? u.getUserEmail() : u.getUsername())
+                                .orElse("Admin");
+                    });
+                    lead.setCreatedBy(display);
+                } else {
+                    lead.setCreatedBy("Admin");
+                }
+            }
+            if (lead.getUpdatedBy() == null || lead.getUpdatedBy().isBlank()) {
+                lead.setUpdatedBy(lead.getCreatedBy() != null ? lead.getCreatedBy() : "Admin");
+            }
+        }
+    }
+
+    public List<Lead> getAllLeads(Long userId, String role) {
+        List<Lead> leads;
+        if (authUtil.isSuperAdmin(role)) {
+            leads = leadRepository.findAll(Sort.by(Sort.Direction.DESC, "leadId"));
+        } else if (authUtil.isAdmin(role)) {
+            List<Long> userIds = getCompanyUserIds(userId, role);
+            leads = leadRepository.findByUserIdFkInOrLeadAssignedMemberIn(userIds);
+        } else {
+            // Standard user/team member sees ONLY their own created or assigned leads
+            leads = leadRepository.findByUserIdFkOrLeadAssignedMember(userId);
+        }
+        populateCreatorInfoIfMissing(leads);
+        return leads;
+    }
+
 
     public Lead getLeadById(Long id) {
         return leadRepository.findById(id)
@@ -130,6 +204,17 @@ public class LeadService {
             lead.setUserIdFk(userId);
         }
         lead.setLeadCreatedDate(LocalDateTime.now());
+        lead.setUpdatedDate(LocalDateTime.now());
+
+        User currentUser = userRepository.findById(userId).orElse(null);
+        String creatorDisplay = currentUser != null && currentUser.getUserEmail() != null ? currentUser.getUserEmail() : "Admin";
+        if (request.getCreatedBy() != null && !request.getCreatedBy().isBlank()) {
+            lead.setCreatedBy(request.getCreatedBy());
+        } else {
+            lead.setCreatedBy(creatorDisplay);
+        }
+        lead.setUpdatedBy(lead.getCreatedBy());
+
         lead.setUploadDocument(fileUploadUtil.upload(doc));
         lead.setUploadDocument1(fileUploadUtil.upload(doc1));
         lead.setUploadDocument2(fileUploadUtil.upload(doc2));
@@ -144,6 +229,7 @@ public class LeadService {
         leadScoringService.scoreAndCache(saved.getLeadId());
         return saved;
     }
+
 
     // public Lead updateLead(Long id, LeadRequest request, Long userId,
     //         MultipartFile doc, MultipartFile doc1,
@@ -236,37 +322,67 @@ public class LeadService {
             lead.setUploadDocument3(docUrl);
         }
 
+        User currentUser = userRepository.findById(userId).orElse(null);
+        if (currentUser != null && currentUser.getUserEmail() != null) {
+            lead.setUpdatedBy(currentUser.getUserEmail());
+        }
+        lead.setUpdatedDate(LocalDateTime.now());
+
         // Save Lead
         Lead saved = leadRepository.save(lead);
+
         saveNegotiationRevision(lead);
 
         // ==========================
         // Sync Negotiation Table
         // ==========================
-        Negotiation negotiation = negotiationRepository
-                .findFirstByLeadIdFk(saved.getLeadId())
-                .orElse(null);
-
-        if (negotiation != null) {
-            negotiation.setNegotiationName(saved.getLeadOrganisationName());
-            negotiation.setNegotiationTitle(saved.getLeadTitle());
-            negotiation.setQuotationNo(saved.getQuotationNumber());
-            negotiation.setQuotationRevision(saved.getQuotationRevision());
-            negotiation.setQuotationAmount(saved.getQuotationAmount());
-            negotiation.setRemarks(saved.getFollowUpRemark());
-
-            if (saved.getLeadOutcomeStatus() != null
-                    && !saved.getLeadOutcomeStatus().isBlank()) {
-                negotiation.setNegotiationStatus(saved.getLeadOutcomeStatus());
-            }
-
-            negotiationRepository.save(negotiation);
-        }
+        syncNegotiationForLead(saved);
 
         return saved;
     }
 
+    public void syncNegotiationForLead(Lead lead) {
+        if (lead == null || lead.getLeadId() == null) return;
+
+        boolean isNegotiation = "Negotiation".equalsIgnoreCase(lead.getLeadStatus())
+                || "Negotiation".equalsIgnoreCase(lead.getLeadOutcomeStatus());
+
+        if (isNegotiation) {
+            Negotiation negotiation = negotiationRepository
+                    .findFirstByLeadIdFk(lead.getLeadId())
+                    .orElse(null);
+
+            if (negotiation == null) {
+                negotiation = Negotiation.builder()
+                        .leadIdFk(lead.getLeadId())
+                        .negotiationName(lead.getLeadOrganisationName())
+                        .negotiationTitle(lead.getLeadTitle())
+                        .quotationNo(lead.getQuotationNumber())
+                        .quotationRevision(lead.getQuotationRevision())
+                        .quotationAmount(lead.getQuotationAmount())
+                        .remarks(lead.getFollowUpRemark())
+                        .negotiationStatus("Negotiation")
+                        .userIdFk(lead.getUserIdFk())
+                        .build();
+            } else {
+                negotiation.setNegotiationName(lead.getLeadOrganisationName());
+                negotiation.setNegotiationTitle(lead.getLeadTitle());
+                negotiation.setQuotationNo(lead.getQuotationNumber());
+                negotiation.setQuotationRevision(lead.getQuotationRevision());
+                negotiation.setQuotationAmount(lead.getQuotationAmount());
+                negotiation.setRemarks(lead.getFollowUpRemark());
+                if (lead.getLeadOutcomeStatus() != null && !lead.getLeadOutcomeStatus().isBlank()) {
+                    negotiation.setNegotiationStatus(lead.getLeadOutcomeStatus());
+                } else if (lead.getLeadStatus() != null && !lead.getLeadStatus().isBlank()) {
+                    negotiation.setNegotiationStatus(lead.getLeadStatus());
+                }
+            }
+            negotiationRepository.save(negotiation);
+        }
+    }
+
     /**
+
      * Save current state as a negotiation revision before updating
      */
     private void saveNegotiationRevision(Lead lead) {
@@ -418,68 +534,79 @@ public class LeadService {
         leadRepository.delete(lead);
     }
 
-    public Lead updateLeadStatus(Long id, String status) {
-
+    public Lead updateLeadStatus(Long id, String status, User user) {
         Lead lead = getLeadById(id);
-
         lead.setLeadStatus(status);
+        if (user != null && user.getUserEmail() != null) {
+            lead.setUpdatedBy(user.getUserEmail());
+        }
+        lead.setUpdatedDate(LocalDateTime.now());
 
         if ("Qualified".equalsIgnoreCase(status)) {
-
             lead.setEnquiryType("Qualified");
-
-            // Auto set
             lead.setLeadOutcomeStatus("Open");
             lead.setEnquiryStatus("Pending");
-
-            createSalesTaskIfNotExist(
-                    lead,
-                    lead.getUserIdFk() != null ? lead.getUserIdFk() : 1L
-            );
-
+            createSalesTaskIfNotExist(lead, lead.getUserIdFk() != null ? lead.getUserIdFk() : 1L);
+        } else if ("Negotiation".equalsIgnoreCase(status)) {
+            lead.setLeadOutcomeStatus("Negotiation");
         } else if ("Disqualified".equalsIgnoreCase(status)) {
-
             lead.setEnquiryType("Disqualified");
-
-            // Auto clear
             lead.setLeadOutcomeStatus(null);
             lead.setEnquiryStatus(null);
-
         } else if ("Won".equalsIgnoreCase(status)) {
-
-            createProjectTaskIfNotExist(
-                    lead,
-                    lead.getUserIdFk() != null ? lead.getUserIdFk() : 1L
-            );
+            createProjectTaskIfNotExist(lead, lead.getUserIdFk() != null ? lead.getUserIdFk() : 1L);
         }
 
         Lead saved = leadRepository.save(lead);
-
+        syncNegotiationForLead(saved);
         leadScoringService.scoreAndCache(saved.getLeadId());
-
         return saved;
+
+    }
+
+    public Lead updateLeadStatus(Long id, String status) {
+        return updateLeadStatus(id, status, null);
+    }
+
+    public Lead updateLeadGroup(Long id, String group, User user) {
+        Lead lead = getLeadById(id);
+        lead.setLeadGroup(group);
+        if (user != null && user.getUserEmail() != null) {
+            lead.setUpdatedBy(user.getUserEmail());
+        }
+        lead.setUpdatedDate(LocalDateTime.now());
+        return leadRepository.save(lead);
     }
 
     public Lead updateLeadGroup(Long id, String group) {
+        return updateLeadGroup(id, group, null);
+    }
+
+    public Lead updateLeadEnquiryStatus(Long id, String status, User user) {
         Lead lead = getLeadById(id);
-        lead.setLeadGroup(group);
+        lead.setEnquiryStatus(status);
+        if (user != null && user.getUserEmail() != null) {
+            lead.setUpdatedBy(user.getUserEmail());
+        }
+        lead.setUpdatedDate(LocalDateTime.now());
         return leadRepository.save(lead);
     }
 
     public Lead updateLeadEnquiryStatus(Long id, String status) {
-        Lead lead = getLeadById(id);
-        lead.setEnquiryStatus(status);
-        return leadRepository.save(lead);
+        return updateLeadEnquiryStatus(id, status, null);
     }
 
-    public Lead updateLeadOutcomeStatus(Long id, String leadOutcomeStatus) {
-
+    public Lead updateLeadOutcomeStatus(Long id, String leadOutcomeStatus, User user) {
         Lead lead = leadRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Lead not found with id: " + id));
-
         lead.setLeadOutcomeStatus(leadOutcomeStatus);
+        if (user != null && user.getUserEmail() != null) {
+            lead.setUpdatedBy(user.getUserEmail());
+        }
+        lead.setUpdatedDate(LocalDateTime.now());
 
         Lead saved = leadRepository.save(lead);
+
 
         if ("Negotiation".equalsIgnoreCase(leadOutcomeStatus)) {
 
@@ -518,15 +645,26 @@ public class LeadService {
         return saved;
     }
 
-    public List<Lead> getLeadsByStatus(String status, Long userId, String role) {
-        if (authUtil.isSuperAdmin(role)) {
-            return leadRepository.findByLeadStatus(status);
-        }
-        if (authUtil.isAdmin(role)) {
-            return leadRepository.findByUserIdFkAndLeadStatus(userId, status);
-        }
-        return leadRepository.findByLeadAssignedMemberAndLeadStatus(userId, status);
+    public Lead updateLeadOutcomeStatus(Long id, String leadOutcomeStatus) {
+        return updateLeadOutcomeStatus(id, leadOutcomeStatus, null);
     }
+
+
+    public List<Lead> getLeadsByStatus(String status, Long userId, String role) {
+        List<Lead> leads;
+        if (authUtil.isSuperAdmin(role)) {
+            leads = leadRepository.findByLeadStatus(status);
+        } else if (authUtil.isAdmin(role)) {
+            List<Long> userIds = getCompanyUserIds(userId, role);
+            leads = leadRepository.findByUserIdFkInAndLeadStatus(userIds, status);
+        } else {
+            leads = leadRepository.findByUserIdFkOrLeadAssignedMemberAndLeadStatus(userId, status);
+        }
+        populateCreatorInfoIfMissing(leads);
+        return leads;
+    }
+
+
 
     public List<LeadNote> getNotes(Long leadId) {
         getLeadById(leadId);

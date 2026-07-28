@@ -173,6 +173,17 @@ public class Lead {
     @Column(name = "quotation_sent_date")
     private LocalDate QuotationSentDate;
 
+    @Column(name = "created_by")
+    private String createdBy;
+
+    @Column(name = "updated_by")
+    private String updatedBy;
+
+    @Column(name = "updated_date")
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", shape = JsonFormat.Shape.STRING)
+    private LocalDateTime updatedDate;
+
     private String remarks;
 
 }
+

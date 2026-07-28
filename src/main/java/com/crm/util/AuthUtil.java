@@ -55,7 +55,20 @@ public class AuthUtil {
                 .orElse(user.getUserid());
     }
 
+    public Long getSelectedTeamMemberId() {
+        String header = request.getHeader("X-Team-Member-Id");
+        if (header != null && !header.trim().isEmpty()) {
+            try {
+                return Long.parseLong(header.trim());
+            } catch (Exception e) {
+                // ignore
+            }
+        }
+        return null;
+    }
+
     public String resolveRoleName(String roleField) {
+
         if (roleField == null) return "";
         if (roleField.equalsIgnoreCase("SUPER_ADMIN") || roleField.equalsIgnoreCase("SUPER ADMIN")) {
             return "SUPER_ADMIN";

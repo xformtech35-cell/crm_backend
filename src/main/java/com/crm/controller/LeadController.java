@@ -128,30 +128,35 @@ public class LeadController {
 
     @PatchMapping("/{id}/status")
     public ResponseEntity<ApiResponse<Lead>> updateStatus(@PathVariable Long id,
-            @RequestBody Map<String, String> body) {
+            @RequestBody Map<String, String> body, Authentication auth) {
+        User user = authUtil.getCurrentUser(auth);
         return ResponseEntity
-                .ok(ApiResponse.success("Status updated", leadService.updateLeadStatus(id, body.get("status"))));
+                .ok(ApiResponse.success("Status updated", leadService.updateLeadStatus(id, body.get("status"), user)));
     }
 
     @PatchMapping("/{id}/group")
-    public ResponseEntity<ApiResponse<Lead>> updateGroup(@PathVariable Long id, @RequestBody Map<String, String> body) {
+    public ResponseEntity<ApiResponse<Lead>> updateGroup(@PathVariable Long id, @RequestBody Map<String, String> body, Authentication auth) {
+        User user = authUtil.getCurrentUser(auth);
         return ResponseEntity
-                .ok(ApiResponse.success("Group updated", leadService.updateLeadGroup(id, body.get("group"))));
+                .ok(ApiResponse.success("Group updated", leadService.updateLeadGroup(id, body.get("group"), user)));
     }
 
     @PatchMapping("/{id}/lead-outcome-status")
     public ResponseEntity<ApiResponse<Lead>> updateLeadOutcomeStatus(@PathVariable Long id,
-            @RequestBody Map<String, String> body) {
+            @RequestBody Map<String, String> body, Authentication auth) {
+        User user = authUtil.getCurrentUser(auth);
         return ResponseEntity.ok(ApiResponse.success("Lead status updated",
-                leadService.updateLeadOutcomeStatus(id, body.get("leadOutcomeStatus"))));
+                leadService.updateLeadOutcomeStatus(id, body.get("leadOutcomeStatus"), user)));
     }
 
     @PatchMapping("/{id}/enquiry-status")
     public ResponseEntity<ApiResponse<Lead>> updateEnquiryStatus(@PathVariable Long id,
-            @RequestBody Map<String, String> body) {
+            @RequestBody Map<String, String> body, Authentication auth) {
+        User user = authUtil.getCurrentUser(auth);
         return ResponseEntity.ok(ApiResponse.success("Enquiry status updated",
-                leadService.updateLeadEnquiryStatus(id, body.get("enquiryStatus"))));
+                leadService.updateLeadEnquiryStatus(id, body.get("enquiryStatus"), user)));
     }
+
 
     @GetMapping("/{id}/notes")
     public ResponseEntity<ApiResponse<List<LeadNote>>> getNotes(@PathVariable Long id) {

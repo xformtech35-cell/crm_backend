@@ -11,6 +11,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface NegotiationRepository extends JpaRepository<Negotiation, Long> {
     List<Negotiation> findByLeadIdFk(Long leadIdFk);
     List<Negotiation> findByUserIdFk(Long userIdFk);
+    List<Negotiation> findByUserIdFkIn(List<Long> userIdFks);
+
     Optional<Negotiation> findFirstByLeadIdFk(Long leadIdFk);
     
     List<Negotiation> findByQuotationNo(String quotationNo);
