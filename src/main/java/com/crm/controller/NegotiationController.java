@@ -46,8 +46,11 @@ public class NegotiationController {
 
     private final NegotiationRepository negotiationRepository;
     private final LeadRepository leadRepository;
+    private final com.crm.repository.UserRepository userRepository;
+    private final com.crm.service.LeadService leadService;
     
     private final NegotiationService negotiationService;
+
     private final DocumentRepository documentRepository;
 
 
@@ -103,7 +106,40 @@ public class NegotiationController {
     @GetMapping("/user/{userId}")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getByUser(@PathVariable Long userId) {
 
-        List<Negotiation> negotiations = negotiationRepository.findByUserIdFk(userId);
+        com.crm.entity.User user = userRepository.findById(userId).orElse(null);
+        List<Long> companyUserIds;
+        if (user != null) {
+            companyUserIds = leadService.getCompanyUserIds(user.getUserid(), user.getRole());
+        } else {
+            companyUserIds = List.of(userId);
+        }
+
+        // Auto-sync any existing leads with Negotiation status
+        List<Lead> leads;
+        if (user != null && ("SUPER_ADMIN".equalsIgnoreCase(user.getRole()) || "SUPER ADMIN".equalsIgnoreCase(user.getRole()))) {
+            leads = leadRepository.findAll();
+        } else if (companyUserIds.size() > 1) {
+            leads = leadRepository.findByUserIdFkInOrLeadAssignedMemberIn(companyUserIds);
+        } else {
+            leads = leadRepository.findByUserIdFkOrLeadAssignedMember(userId);
+        }
+
+        for (Lead l : leads) {
+            if ("Negotiation".equalsIgnoreCase(l.getLeadStatus()) || "Negotiation".equalsIgnoreCase(l.getLeadOutcomeStatus())) {
+                leadService.syncNegotiationForLead(l);
+            }
+        }
+
+        // Query negotiations for companyUserIds
+        List<Negotiation> negotiations;
+        if (user != null && ("SUPER_ADMIN".equalsIgnoreCase(user.getRole()) || "SUPER ADMIN".equalsIgnoreCase(user.getRole()))) {
+            negotiations = negotiationRepository.findAll();
+        } else if (companyUserIds.size() > 1) {
+            negotiations = negotiationRepository.findByUserIdFkIn(companyUserIds);
+        } else {
+            negotiations = negotiationRepository.findByUserIdFk(userId);
+        }
+
         List<Map<String, Object>> responseList = new ArrayList<>();
 
         for (Negotiation n : negotiations) {
@@ -173,6 +209,7 @@ public class NegotiationController {
         return ResponseEntity.ok(ApiResponse.success("Negotiations fetched", responseList));
     }
 
+
     @GetMapping("/{id}/details")
 public ResponseEntity<ApiResponse<Lead>> getDetails(@PathVariable Long id) {
     Negotiation negotiation = negotiationRepository.findById(id)
@@ -184,7 +221,130 @@ public ResponseEntity<ApiResponse<Lead>> getDetails(@PathVariable Long id) {
     return ResponseEntity.ok(ApiResponse.success("Lead details fetched", lead));
 }
 
+    @GetMapping("/lead/{leadId}/revisions")
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getRevisionsByLeadId(@PathVariable Long leadId) {
+        try {
+            // 1. Find the negotiation for this lead
+            Optional<Negotiation> nOpt = negotiationRepository.findFirstByLeadIdFk(leadId);
+            if (nOpt.isEmpty()) {
+                // Try to sync if lead is in negotiation status
+                Optional<Lead> leadOpt = leadRepository.findById(leadId);
+                if (leadOpt.isPresent()) {
+                    try { leadService.syncNegotiationForLead(leadOpt.get()); } catch (Exception ex) {
+                        log.warn("syncNegotiationForLead failed for leadId {}: {}", leadId, ex.getMessage());
+                    }
+                    nOpt = negotiationRepository.findFirstByLeadIdFk(leadId);
+                }
+            }
+            if (nOpt.isEmpty()) {
+                return ResponseEntity.ok(ApiResponse.success("No negotiation found", new ArrayList<>()));
+            }
+
+            Negotiation negotiation = nOpt.get();
+            List<Map<String, Object>> list = new ArrayList<>();
+
+            // 2. Add CURRENT negotiation state as the "Active" revision at top
+            Map<String, Object> currentMap = new HashMap<>();
+            currentMap.put("id", "current-" + negotiation.getId());
+            currentMap.put("revisionNo", negotiation.getQuotationRevision() != null ? negotiation.getQuotationRevision() : "Current");
+            currentMap.put("quotationNo", negotiation.getQuotationNo());
+            currentMap.put("quotationAmount", negotiation.getQuotationAmount());
+            currentMap.put("negotiationStatus", negotiation.getNegotiationStatus());
+            currentMap.put("remarks", negotiation.getRemarks());
+            currentMap.put("enquiryDescription", null);
+            currentMap.put("quotationDate", null);
+            currentMap.put("updatedDate", null);
+            currentMap.put("isCurrent", true);
+
+            // Fetch documents for the current negotiation by quotationNo
+            String currentQuotNo = negotiation.getQuotationNo();
+            if (currentQuotNo != null && !currentQuotNo.isBlank()) {
+                try {
+                    List<Document> currentDocs = documentRepository.findByQuotationNo(currentQuotNo);
+                    if (currentDocs != null && !currentDocs.isEmpty()) {
+                        List<Map<String, Object>> docList = new ArrayList<>();
+                        for (Document doc : currentDocs) {
+                            Map<String, Object> docMap = new HashMap<>();
+                            docMap.put("id", doc.getId());
+                            docMap.put("fileName", doc.getFileName());
+                            docMap.put("fileSize", doc.getFileSize());
+                            docMap.put("fileType", doc.getFileType());
+                            docMap.put("uploadedDate", doc.getUploadedDate());
+                            docMap.put("fileUrl", doc.getFileUrl());
+                            docList.add(docMap);
+                        }
+                        currentMap.put("documents", docList);
+                        currentMap.put("documentCount", currentDocs.size());
+                    } else {
+                        currentMap.put("documents", new ArrayList<>());
+                        currentMap.put("documentCount", 0);
+                    }
+                } catch (Exception ex) {
+                    log.warn("Error fetching docs for quotationNo {}: {}", currentQuotNo, ex.getMessage());
+                    currentMap.put("documents", new ArrayList<>());
+                    currentMap.put("documentCount", 0);
+                }
+            } else {
+                currentMap.put("documents", new ArrayList<>());
+                currentMap.put("documentCount", 0);
+            }
+            list.add(currentMap);
+
+            // 3. Append historical revisions from crm_negotiation_revision table
+            try {
+                List<NegotiationRevision> revisions =
+                        negotiationRevisionRepository.findByNegotiationIdOrderByUpdatedDateDesc(negotiation.getId());
+                for (NegotiationRevision rev : revisions) {
+                    Map<String, Object> map = new HashMap<>();
+                    map.put("id", rev.getId());
+                    map.put("revisionNo", rev.getQuotationRevision());
+                    map.put("quotationNo", rev.getQuotationNo());
+                    map.put("quotationAmount", rev.getQuotationAmount());
+                    map.put("negotiationStatus", rev.getNegotiationStatus());
+                    map.put("remarks", rev.getRemarks());
+                    map.put("enquiryDescription", rev.getEnquiryDescription());
+                    map.put("quotationDate", rev.getQuotationDate());
+                    map.put("updatedDate", rev.getUpdatedDate());
+                    map.put("isCurrent", false);
+                    try {
+                        List<Document> documents = documentRepository.findByQuotationNo(rev.getQuotationNo());
+                        if (documents != null && !documents.isEmpty()) {
+                            List<Map<String, Object>> docList = new ArrayList<>();
+                            for (Document doc : documents) {
+                                Map<String, Object> docMap = new HashMap<>();
+                                docMap.put("id", doc.getId());
+                                docMap.put("fileName", doc.getFileName());
+                                docMap.put("fileSize", doc.getFileSize());
+                                docMap.put("fileType", doc.getFileType());
+                                docMap.put("uploadedDate", doc.getUploadedDate());
+                                docMap.put("fileUrl", doc.getFileUrl());
+                                docList.add(docMap);
+                            }
+                            map.put("documents", docList);
+                            map.put("documentCount", documents.size());
+                        } else {
+                            map.put("documents", new ArrayList<>());
+                            map.put("documentCount", 0);
+                        }
+                    } catch (Exception ex) {
+                        map.put("documents", new ArrayList<>());
+                        map.put("documentCount", 0);
+                    }
+                    list.add(map);
+                }
+            } catch (Exception ex) {
+                log.warn("Error fetching revision history for negotiation {}: {}", negotiation.getId(), ex.getMessage());
+            }
+
+            return ResponseEntity.ok(ApiResponse.success("Revision history fetched", list));
+        } catch (Exception e) {
+            log.error("Error in getRevisionsByLeadId for leadId {}: {}", leadId, e.getMessage(), e);
+            return ResponseEntity.ok(ApiResponse.success("Revision history fetched", new ArrayList<>()));
+        }
+    }
+
     @GetMapping("/{id}/revisions")
+
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getRevisions(@PathVariable Long id) {
 
         List<NegotiationRevision> revisions

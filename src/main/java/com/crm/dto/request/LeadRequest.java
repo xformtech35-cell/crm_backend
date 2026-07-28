@@ -45,7 +45,7 @@ public class LeadRequest {
     private String quotationRevision;
     private Integer leadRating;
     private LocalDate quotationSentDate;
-
-
-    
+    private String createdBy;
+    private String updatedBy;
 }
+

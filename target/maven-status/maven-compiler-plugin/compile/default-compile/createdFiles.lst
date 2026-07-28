@@ -17,6 +17,7 @@ com\crm\controller\IntegrationConfigController.class
 com\crm\repository\TeamMemberRepository.class
 com\crm\entity\Contact.class
 com\crm\service\LeadReminderEmailService.class
+com\crm\dto\response\DocumentResponse$DocumentResponseBuilder.class
 com\crm\dto\request\ChangePasswordRequest.class
 com\crm\service\TaskTimeLogService.class
 com\crm\entity\Team.class
@@ -32,11 +33,13 @@ com\crm\entity\Role$RoleBuilder.class
 com\crm\entity\User.class
 com\crm\config\WebClientConfig.class
 com\crm\entity\LeadSourceMaster.class
+com\crm\entity\Document$DocumentBuilder.class
 com\crm\config\DemoAuthBootstrap.class
 com\crm\security\JwtTokenProvider.class
 com\crm\service\LeadScoringService.class
 com\crm\dto\request\ImportLeadRequest.class
 com\crm\service\ProjectService.class
+com\crm\repository\DocumentRepository.class
 com\crm\controller\TaskTimeLogController.class
 com\crm\entity\TeamMember.class
 com\crm\util\AuthUtil.class
@@ -57,6 +60,7 @@ com\crm\controller\TaskController.class
 com\crm\entity\CreateTeam.class
 com\crm\security\JwtAuthenticationFilter.class
 com\crm\service\IndiamartIntegrationService.class
+com\crm\dto\request\DocumentUploadRequest$DocumentUploadRequestBuilder.class
 com\crm\entity\Organization$OrganizationBuilder.class
 com\crm\service\TeamMemberService.class
 com\crm\controller\AuthController.class
@@ -72,6 +76,7 @@ com\crm\repository\RoleRepository.class
 com\crm\dto\request\RoleRequest.class
 com\crm\entity\TaskTimeLog$TaskTimeLogBuilder.class
 com\crm\repository\LeadReminderRepository.class
+com\crm\service\NegotiationService.class
 com\crm\dto\request\CreateTeamRequest.class
 com\crm\dto\request\OpportunityRequest.class
 com\crm\entity\IntegrationConfig.class
@@ -87,6 +92,7 @@ com\crm\entity\Role.class
 com\crm\service\LeadService.class
 com\crm\service\CreateTeamService.class
 com\crm\repository\LeadGroupRepository.class
+com\crm\service\DocumentService.class
 com\crm\controller\CreateTeamController.class
 com\crm\repository\PermissionRepository.class
 com\crm\dto\response\LeadScoreResponse.class
@@ -118,6 +124,7 @@ com\crm\entity\Lead$LeadBuilder.class
 com\crm\dto\request\TaskTimeLogRequest.class
 com\crm\dto\response\ApiResponse.class
 com\crm\entity\Opportunity$OpportunityBuilder.class
+com\crm\entity\Document.class
 com\crm\dto\request\TeamRequest.class
 com\crm\service\TeamService.class
 com\crm\controller\TeamController.class
@@ -137,6 +144,9 @@ com\crm\controller\FileController.class
 com\crm\repository\CreateTeamRepository.class
 com\crm\controller\OpportunityController.class
 com\crm\repository\LeadRepository.class
+com\crm\controller\DocumentController.class
 com\crm\repository\UserRepository.class
 com\crm\entity\Permission.class
+com\crm\dto\response\DocumentResponse.class
 com\crm\controller\NegotiationController.class
+com\crm\dto\request\DocumentUploadRequest.class

@@ -18,7 +18,22 @@ public interface LeadRepository extends JpaRepository<Lead, Long>, JpaSpecificat
     List<Lead> findByUserIdFkAndLeadStatus(Long userIdFk, String leadStatus);
     List<Lead> findByLeadAssignedMember(Long leadAssignedMember);
     List<Lead> findByLeadAssignedMemberAndLeadStatus(Long leadAssignedMember, String leadStatus);
+
+    @Query("SELECT l FROM Lead l WHERE (l.userIdFk IN :userIds OR l.leadAssignedMember IN :userIds) ORDER BY l.leadId DESC")
+    List<Lead> findByUserIdFkInOrLeadAssignedMemberIn(@Param("userIds") List<Long> userIds);
+
+    @Query("SELECT l FROM Lead l WHERE (l.userIdFk IN :userIds OR l.leadAssignedMember IN :userIds) AND l.leadStatus = :status ORDER BY l.leadId DESC")
+    List<Lead> findByUserIdFkInAndLeadStatus(@Param("userIds") List<Long> userIds, @Param("status") String status);
+
+    @Query("SELECT l FROM Lead l WHERE (l.userIdFk = :userId OR l.leadAssignedMember = :userId) ORDER BY l.leadId DESC")
+    List<Lead> findByUserIdFkOrLeadAssignedMember(@Param("userId") Long userId);
+
+    @Query("SELECT l FROM Lead l WHERE (l.userIdFk = :userId OR l.leadAssignedMember = :userId) AND l.leadStatus = :status ORDER BY l.leadId DESC")
+    List<Lead> findByUserIdFkOrLeadAssignedMemberAndLeadStatus(@Param("userId") Long userId, @Param("status") String status);
+
+
     Optional<Lead> findByUniqueQueryId(String uniqueQueryId);
+
     boolean existsByUniqueQueryId(String uniqueQueryId);
     long countByLeadStatus(String leadStatus);
     long countByUserIdFk(Long userIdFk);    
