@@ -14,7 +14,9 @@ com\crm\repository\ProjectRepository.class
 com\crm\controller\TeamMemberController.class
 com\crm\dto\request\AttendanceRequest.class
 com\crm\controller\IntegrationConfigController.class
+com\crm\repository\DataScopeConfigRepository.class
 com\crm\repository\TeamMemberRepository.class
+com\crm\controller\DataScopeConfigController.class
 com\crm\entity\Contact.class
 com\crm\service\LeadReminderEmailService.class
 com\crm\dto\response\DocumentResponse$DocumentResponseBuilder.class
@@ -81,10 +83,12 @@ com\crm\dto\request\CreateTeamRequest.class
 com\crm\dto\request\OpportunityRequest.class
 com\crm\entity\IntegrationConfig.class
 com\crm\entity\NegotiationRevision$NegotiationRevisionBuilder.class
+com\crm\entity\DataScopeConfig$DataScopeConfigBuilder.class
 com\crm\entity\CreateTeam$CreateTeamBuilder.class
 com\crm\service\CalendarService.class
 com\crm\service\TaskService.class
 com\crm\repository\LeadNoteRepository.class
+com\crm\scheduler\TrashCleanupScheduler.class
 com\crm\controller\DashboardController.class
 com\crm\entity\User$UserBuilder.class
 com\crm\entity\Attendance.class
@@ -95,6 +99,7 @@ com\crm\repository\LeadGroupRepository.class
 com\crm\service\DocumentService.class
 com\crm\controller\CreateTeamController.class
 com\crm\repository\PermissionRepository.class
+com\crm\entity\DataScopeConfig.class
 com\crm\dto\response\LeadScoreResponse.class
 com\crm\exception\BadRequestException.class
 com\crm\security\UserDetailsServiceImpl.class
@@ -117,6 +122,7 @@ com\crm\dto\response\AuthResponse$AuthResponseBuilder.class
 com\crm\dto\response\AuthResponse.class
 com\crm\entity\LeadReminder$LeadReminderBuilder.class
 com\crm\entity\Project$ProjectBuilder.class
+com\crm\service\DataScopeConfigService.class
 com\crm\controller\CalendarController.class
 com\crm\repository\OpportunityRepository.class
 com\crm\dto\response\LeadScoreResponse$LeadScoreResponseBuilder.class
@@ -125,6 +131,7 @@ com\crm\dto\request\TaskTimeLogRequest.class
 com\crm\dto\response\ApiResponse.class
 com\crm\entity\Opportunity$OpportunityBuilder.class
 com\crm\entity\Document.class
+com\crm\dto\request\DataScopeConfigRequest.class
 com\crm\dto\request\TeamRequest.class
 com\crm\service\TeamService.class
 com\crm\controller\TeamController.class
@@ -147,6 +154,7 @@ com\crm\repository\LeadRepository.class
 com\crm\controller\DocumentController.class
 com\crm\repository\UserRepository.class
 com\crm\entity\Permission.class
+com\crm\dto\request\DataScopeConfigRequest$DataScopeConfigRequestBuilder.class
 com\crm\dto\response\DocumentResponse.class
 com\crm\controller\NegotiationController.class
 com\crm\dto\request\DocumentUploadRequest.class

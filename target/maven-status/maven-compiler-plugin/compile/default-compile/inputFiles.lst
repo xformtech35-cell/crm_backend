@@ -14,6 +14,7 @@ C:\Projects\CRM\crm_backend\src\main\java\com\crm\exception\BadRequestException.
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\entity\TaskTimeLog.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\repository\DocumentRepository.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\dto\request\ImportLeadRequest.java
+C:\Projects\CRM\crm_backend\src\main\java\com\crm\dto\request\DataScopeConfigRequest.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\dto\request\DocumentUploadRequest.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\repository\LeadNoteRepository.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\repository\UserRepository.java
@@ -23,6 +24,7 @@ C:\Projects\CRM\crm_backend\src\main\java\com\crm\controller\TaskTimeLogControll
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\config\WebClientConfig.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\repository\RoleRepository.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\dto\response\LeadScoreResponse.java
+C:\Projects\CRM\crm_backend\src\main\java\com\crm\scheduler\TrashCleanupScheduler.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\dto\request\RoleRequest.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\security\JwtAuthenticationFilter.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\repository\TeamMemberRepository.java
@@ -45,6 +47,7 @@ C:\Projects\CRM\crm_backend\src\main\java\com\crm\dto\response\DashboardResponse
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\entity\Lead.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\entity\User.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\controller\LeadScoreController.java
+C:\Projects\CRM\crm_backend\src\main\java\com\crm\controller\DataScopeConfigController.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\controller\DashboardController.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\entity\CreateTeam.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\repository\LeadRepository.java
@@ -60,6 +63,7 @@ C:\Projects\CRM\crm_backend\src\main\java\com\crm\config\DemoAuthBootstrap.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\entity\IntegrationConfig.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\controller\ContactController.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\controller\TaskController.java
+C:\Projects\CRM\crm_backend\src\main\java\com\crm\repository\DataScopeConfigRepository.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\controller\NegotiationController.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\dto\request\OpportunityRequest.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\controller\ProjectController.java
@@ -114,10 +118,12 @@ C:\Projects\CRM\crm_backend\src\main\java\com\crm\dto\request\AttendanceRequest.
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\entity\Document.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\service\DocumentService.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\repository\LeadScoreRepository.java
+C:\Projects\CRM\crm_backend\src\main\java\com\crm\service\DataScopeConfigService.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\service\TaskService.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\entity\LeadNote.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\service\OrganizationService.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\controller\CreateTeamController.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\repository\NegotiationRepository.java
+C:\Projects\CRM\crm_backend\src\main\java\com\crm\entity\DataScopeConfig.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\dto\request\ProjectRequest.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\service\LeadService.java

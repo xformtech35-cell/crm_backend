@@ -7,7 +7,16 @@ import java.time.LocalDate;
 @Entity
 @Table(name = "crm_xformsales_organization")
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+@org.hibernate.annotations.SQLDelete(sql = "UPDATE crm_xformsales_organization SET is_deleted = true, deleted_at = NOW() WHERE organization_id = ?")
+@org.hibernate.annotations.SQLRestriction("is_deleted = false")
 public class Organization {
+
+    @Builder.Default
+    @Column(name = "is_deleted")
+    private Boolean isDeleted = false;
+
+    @Column(name = "deleted_at")
+    private java.time.LocalDateTime deletedAt;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

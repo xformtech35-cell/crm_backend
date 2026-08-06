@@ -24,7 +24,16 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@org.hibernate.annotations.SQLDelete(sql = "UPDATE crm_xformsales_lead SET is_deleted = true, deleted_at = NOW() WHERE lead_id = ?")
+@org.hibernate.annotations.SQLRestriction("is_deleted = false")
 public class Lead {
+
+    @Builder.Default
+    @Column(name = "is_deleted")
+    private Boolean isDeleted = false;
+
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
