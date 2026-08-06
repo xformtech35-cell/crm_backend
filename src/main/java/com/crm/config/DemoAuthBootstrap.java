@@ -212,6 +212,7 @@ public class DemoAuthBootstrap implements CommandLineRunner {
         }
 
         if ("ADMIN".equals(role)) {
+            user.setIntegrationsAccess(true);
             if (user.getPlanName() == null) {
                 user.setPlanName("Enterprise Premium Plan");
             }
