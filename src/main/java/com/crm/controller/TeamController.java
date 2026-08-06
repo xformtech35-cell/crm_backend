@@ -26,7 +26,7 @@ public class TeamController {
     public ResponseEntity<ApiResponse<List<Team>>> getAll(Authentication auth) {
         User user = authUtil.getCurrentUser(auth);
         Long companyAdminId = authUtil.getCompanyAdminId(user);
-        return ResponseEntity.ok(ApiResponse.success("Teams fetched", teamService.getAllTeams(companyAdminId, user.getRole())));
+        return ResponseEntity.ok(ApiResponse.success("Teams fetched", teamService.getAllTeams(user, companyAdminId, user.getRole())));
     }
 
     @GetMapping("/{id}")

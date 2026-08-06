@@ -1,14 +1,24 @@
 package com.crm.util;
+
 import com.crm.entity.User;
 import com.crm.entity.TeamMember;
+import com.crm.entity.Team;
+import com.crm.entity.CreateTeam;
 import com.crm.exception.ResourceNotFoundException;
 import com.crm.repository.UserRepository;
 import com.crm.repository.RoleRepository;
 import com.crm.repository.TeamMemberRepository;
+import com.crm.repository.TeamRepository;
+import com.crm.repository.CreateTeamRepository;
+import com.crm.repository.DataScopeConfigRepository;
+import com.crm.entity.DataScopeConfig;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
 
 @Component
 @RequiredArgsConstructor
@@ -17,6 +27,9 @@ public class AuthUtil {
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final TeamMemberRepository teamMemberRepository;
+    private final TeamRepository teamRepository;
+    private final CreateTeamRepository createTeamRepository;
+    private final DataScopeConfigRepository dataScopeConfigRepository;
     private final HttpServletRequest request;
 
     public User getCurrentUser(Authentication auth) {
@@ -76,10 +89,19 @@ public class AuthUtil {
         if (roleField.equalsIgnoreCase("ADMIN")) {
             return "ADMIN";
         }
+        if (roleField.equalsIgnoreCase("TEAM_LEAD") || roleField.equalsIgnoreCase("TEAM LEAD") || roleField.equalsIgnoreCase("Team Lead")) {
+            return "TEAM_LEAD";
+        }
         try {
             Long roleId = Long.parseLong(roleField);
             return roleRepository.findById(roleId)
-                    .map(r -> r.getRoleName().toUpperCase())
+                    .map(r -> {
+                        String name = r.getRoleName().toUpperCase();
+                        if (name.equals("TEAM LEAD") || name.equals("TEAM_LEAD") || name.equals("TEAM LEADER")) {
+                            return "TEAM_LEAD";
+                        }
+                        return name;
+                    })
                     .orElse(roleField.toUpperCase());
         } catch (NumberFormatException e) {
             return roleField.toUpperCase();
@@ -96,8 +118,194 @@ public class AuthUtil {
         return "ADMIN".equals(roleName);
     }
 
+    public boolean isTeamLead(String role) {
+        String roleName = resolveRoleName(role);
+        return "TEAM_LEAD".equals(roleName) || "TEAM LEAD".equals(roleName);
+    }
+
     public boolean isAnyAdmin(String role) {
         return isSuperAdmin(role) || isAdmin(role);
+    }
+
+    public List<Team> getLedTeamsForUser(User user) {
+        List<Team> ledTeams = new ArrayList<>();
+        if (user == null) return ledTeams;
+
+        Optional<TeamMember> selfTm = teamMemberRepository.findByTeamMemberEmail(user.getUserEmail());
+        Long selfTmId = selfTm.map(TeamMember::getTeamMemberId).orElse(null);
+
+        if (selfTmId != null) {
+            ledTeams.addAll(teamRepository.findByTeamLeadId(selfTmId));
+        }
+        if (user.getUserid() != null) {
+            List<Team> teamsByUserId = teamRepository.findByTeamLeadId(user.getUserid());
+            for (Team t : teamsByUserId) {
+                if (!ledTeams.contains(t)) ledTeams.add(t);
+            }
+        }
+
+        if (selfTmId != null) {
+            List<CreateTeam> memberAssignments = createTeamRepository.findByTeamMemberIdFk(selfTmId);
+            for (CreateTeam ct : memberAssignments) {
+                if (ct.getTeamIdFk() != null) {
+                    teamRepository.findById(ct.getTeamIdFk()).ifPresent(t -> {
+                        if (!ledTeams.contains(t)) {
+                            ledTeams.add(t);
+                        }
+                    });
+                }
+            }
+        }
+        return ledTeams;
+    }
+
+    public List<Long> getTeamLeadTeamIds(User user) {
+        List<Long> teamIds = new ArrayList<>();
+        List<Team> ledTeams = getLedTeamsForUser(user);
+        for (Team t : ledTeams) {
+            if (t.getTeamId() != null && !teamIds.contains(t.getTeamId())) {
+                teamIds.add(t.getTeamId());
+            }
+        }
+        return teamIds;
+    }
+
+    public List<Long> getTeamLeadMemberUserIds(User user) {
+        List<Long> result = new ArrayList<>();
+        if (user == null) return result;
+        if (user.getUserid() != null) result.add(user.getUserid());
+
+        Optional<TeamMember> selfTm = teamMemberRepository.findByTeamMemberEmail(user.getUserEmail());
+        if (selfTm.isPresent() && selfTm.get().getTeamMemberId() != null) {
+            if (!result.contains(selfTm.get().getTeamMemberId())) {
+                result.add(selfTm.get().getTeamMemberId());
+            }
+        }
+
+        List<Team> ledTeams = getLedTeamsForUser(user);
+        for (Team team : ledTeams) {
+            if (team.getTeamLeadId() != null) {
+                if (!result.contains(team.getTeamLeadId())) {
+                    result.add(team.getTeamLeadId());
+                }
+                teamMemberRepository.findById(team.getTeamLeadId()).ifPresent(tm -> {
+                    if (tm.getTeamMemberEmail() != null && !tm.getTeamMemberEmail().isBlank()) {
+                        userRepository.findByUserEmail(tm.getTeamMemberEmail()).ifPresent(u -> {
+                            if (u.getUserid() != null && !result.contains(u.getUserid())) {
+                                result.add(u.getUserid());
+                            }
+                        });
+                    }
+                });
+                userRepository.findById(team.getTeamLeadId()).ifPresent(u -> {
+                    if (u.getUserid() != null && !result.contains(u.getUserid())) {
+                        result.add(u.getUserid());
+                    }
+                });
+            }
+
+            List<CreateTeam> assignments = createTeamRepository.findByTeamIdFk(team.getTeamId());
+            for (CreateTeam ct : assignments) {
+                if (ct.getTeamMemberIdFk() != null) {
+                    if (!result.contains(ct.getTeamMemberIdFk())) {
+                        result.add(ct.getTeamMemberIdFk());
+                    }
+                    teamMemberRepository.findById(ct.getTeamMemberIdFk()).ifPresent(tm -> {
+                        if (tm.getTeamMemberEmail() != null && !tm.getTeamMemberEmail().isBlank()) {
+                            userRepository.findByUserEmail(tm.getTeamMemberEmail()).ifPresent(u -> {
+                                if (u.getUserid() != null && !result.contains(u.getUserid())) {
+                                    result.add(u.getUserid());
+                                }
+                            });
+                        }
+                    });
+                }
+            }
+        }
+        return result;
+    }
+
+    public List<String> getTeamLeadMemberEmails(User user) {
+        List<String> emails = new ArrayList<>();
+        if (user == null) return emails;
+        if (user.getUserEmail() != null && !user.getUserEmail().isBlank()) {
+            emails.add(user.getUserEmail().trim().toLowerCase());
+        }
+
+        List<Team> ledTeams = getLedTeamsForUser(user);
+        for (Team team : ledTeams) {
+            if (team.getTeamLeadId() != null) {
+                teamMemberRepository.findById(team.getTeamLeadId()).ifPresent(tm -> {
+                    if (tm.getTeamMemberEmail() != null && !tm.getTeamMemberEmail().isBlank()) {
+                        String email = tm.getTeamMemberEmail().trim().toLowerCase();
+                        if (!emails.contains(email)) emails.add(email);
+                    }
+                });
+                userRepository.findById(team.getTeamLeadId()).ifPresent(u -> {
+                    if (u.getUserEmail() != null && !u.getUserEmail().isBlank()) {
+                        String email = u.getUserEmail().trim().toLowerCase();
+                        if (!emails.contains(email)) emails.add(email);
+                    }
+                });
+            }
+
+            List<CreateTeam> assignments = createTeamRepository.findByTeamIdFk(team.getTeamId());
+            for (CreateTeam ct : assignments) {
+                if (ct.getTeamMemberIdFk() != null) {
+                    teamMemberRepository.findById(ct.getTeamMemberIdFk()).ifPresent(tm -> {
+                        if (tm.getTeamMemberEmail() != null && !tm.getTeamMemberEmail().isBlank()) {
+                            String email = tm.getTeamMemberEmail().trim().toLowerCase();
+                            if (!emails.contains(email)) {
+                                emails.add(email);
+                            }
+                        }
+                    });
+                }
+            }
+        }
+        return emails;
+    }
+
+    public String resolveDataScopeMode(User user, String moduleName) {
+        if (user == null) return "OWN_DATA_ONLY";
+        if (isAnyAdmin(user.getRole())) return "ALL_DATA";
+
+        String normalizedModule = moduleName.toUpperCase();
+
+        // 1. Check User-specific override
+        Optional<DataScopeConfig> userConfig = dataScopeConfigRepository.findByUserIdFkAndModuleName(user.getUserid(), normalizedModule);
+        if (userConfig.isPresent()) {
+            return userConfig.get().getScopeMode();
+        }
+
+        // 2. Check Role-specific configuration
+        String roleStr = user.getRole();
+        if (roleStr != null) {
+            try {
+                Long roleId = Long.parseLong(roleStr);
+                Optional<DataScopeConfig> roleConfig = dataScopeConfigRepository.findByRoleIdFkAndModuleName(roleId, normalizedModule);
+                if (roleConfig.isPresent()) {
+                    return roleConfig.get().getScopeMode();
+                }
+            } catch (NumberFormatException e) {
+                // Find role by name
+                Optional<com.crm.entity.Role> roleObj = roleRepository.findAll().stream()
+                        .filter(r -> r.getRoleName() != null && r.getRoleName().equalsIgnoreCase(roleStr))
+                        .findFirst();
+                if (roleObj.isPresent()) {
+                    Optional<DataScopeConfig> roleConfig = dataScopeConfigRepository.findByRoleIdFkAndModuleName(roleObj.get().getRoleId(), normalizedModule);
+                    if (roleConfig.isPresent()) {
+                        return roleConfig.get().getScopeMode();
+                    }
+                }
+            }
+        }
+
+        // 3. Fallback defaults
+        if (isTeamLead(user.getRole())) {
+            return "TEAM_DATA";
+        }
+        return "OWN_DATA_ONLY";
     }
 }
 

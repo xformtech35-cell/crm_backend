@@ -20,10 +20,24 @@ public class ProjectService {
     private final ProjectRepository projectRepository;
     private final FileUploadUtil fileUploadUtil;
     private final AuthUtil authUtil;
+    private final com.crm.repository.UserRepository userRepository;
+    private final LeadService leadService;
 
-    public List<Project> getAllProjects(Long companyAdminId, String role) {
+    public List<Project> getAllProjects(Long userId, String role) {
         if (authUtil.isSuperAdmin(role)) return projectRepository.findAll();
-        return projectRepository.findByUserIdFk(companyAdminId);
+        com.crm.entity.User user = userRepository.findById(userId).orElse(null);
+        String scopeMode = authUtil.resolveDataScopeMode(user, "PROJECTS");
+
+        if ("ALL_DATA".equals(scopeMode)) {
+            List<Long> companyUserIds = leadService.getCompanyUserIds(userId, role);
+            return projectRepository.findByUserIdFkIn(companyUserIds);
+        }
+        if ("TEAM_DATA".equals(scopeMode)) {
+            List<Long> teamUserIds = authUtil.getTeamLeadMemberUserIds(user);
+            if (teamUserIds.isEmpty()) teamUserIds = List.of(-1L);
+            return projectRepository.findByUserIdFkIn(teamUserIds);
+        }
+        return projectRepository.findByUserIdFk(userId);
     }
 
     public Project getById(Long id) {

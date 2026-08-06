@@ -15,10 +15,24 @@ public class ContactService {
 
     private final ContactRepository contactRepository;
     private final com.crm.util.AuthUtil authUtil;
+    private final com.crm.repository.UserRepository userRepository;
+    private final LeadService leadService;
 
     public List<Contact> getAllContacts(Long userId, String role) {
         if (authUtil.isSuperAdmin(role)) {
             return contactRepository.findAll();
+        }
+        com.crm.entity.User user = userRepository.findById(userId).orElse(null);
+        String scopeMode = authUtil.resolveDataScopeMode(user, "CONTACTS");
+
+        if ("ALL_DATA".equals(scopeMode)) {
+            List<Long> companyUserIds = leadService.getCompanyUserIds(userId, role);
+            return contactRepository.findByUserIdFkIn(companyUserIds);
+        }
+        if ("TEAM_DATA".equals(scopeMode)) {
+            List<Long> teamUserIds = authUtil.getTeamLeadMemberUserIds(user);
+            if (teamUserIds.isEmpty()) teamUserIds = List.of(-1L);
+            return contactRepository.findByUserIdFkIn(teamUserIds);
         }
         return contactRepository.findByUserIdFk(userId);
     }

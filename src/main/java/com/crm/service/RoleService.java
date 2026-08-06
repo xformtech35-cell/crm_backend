@@ -44,7 +44,7 @@ public class RoleService {
         List<Role> coreSystemRoles = templateRoles.stream()
                 .filter(r -> {
                     String name = r.getRoleName();
-                    return "ADMIN".equalsIgnoreCase(name);
+                    return "ADMIN".equalsIgnoreCase(name) || "Team Lead".equalsIgnoreCase(name) || "TEAM_LEAD".equalsIgnoreCase(name);
                 })
                 .collect(Collectors.toList());
                 

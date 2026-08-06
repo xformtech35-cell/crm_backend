@@ -7,4 +7,6 @@ import lombok.*;
 public class TeamRequest {
     @NotBlank(message = "Team name is required")
     private String teamName;
+
+    private Long teamLeadId;
 }

@@ -116,9 +116,9 @@ public class LeadService {
             Locale.ENGLISH);
 
     public List<Long> getCompanyUserIds(Long userId, String role) {
-        if (!authUtil.isAdmin(role)) {
-            return List.of(userId);
-        }
+        User user = userRepository.findById(userId).orElse(null);
+        Long adminId = authUtil.getCompanyAdminId(user);
+        if (adminId == null) adminId = userId;
 
         Long selectedTmId = authUtil.getSelectedTeamMemberId();
         if (selectedTmId != null) {
@@ -132,14 +132,19 @@ public class LeadService {
             return List.of(selectedTmId);
         }
 
-
-        Long adminId = userId;
         List<Long> userIds = new ArrayList<>();
-        userIds.add(adminId);
-
+        if (!userIds.contains(adminId)) {
+            userIds.add(adminId);
+        }
+        if (user != null && user.getUserid() != null && !userIds.contains(user.getUserid())) {
+            userIds.add(user.getUserid());
+        }
 
         List<TeamMember> teamMembers = teamMemberRepository.findByUserIdFk(adminId);
         for (TeamMember tm : teamMembers) {
+            if (tm.getTeamMemberId() != null && !userIds.contains(tm.getTeamMemberId())) {
+                userIds.add(tm.getTeamMemberId());
+            }
             if (tm.getTeamMemberEmail() != null && !tm.getTeamMemberEmail().isBlank()) {
                 userRepository.findByUserEmail(tm.getTeamMemberEmail())
                         .ifPresent(u -> {
@@ -175,13 +180,24 @@ public class LeadService {
 
     public List<Lead> getAllLeads(Long userId, String role) {
         List<Lead> leads;
+        User user = userRepository.findById(userId).orElse(null);
+        String scopeMode = authUtil.resolveDataScopeMode(user, "LEADS");
+
         if (authUtil.isSuperAdmin(role)) {
             leads = leadRepository.findAll(Sort.by(Sort.Direction.DESC, "leadId"));
-        } else if (authUtil.isAdmin(role)) {
+        } else if ("ALL_DATA".equals(scopeMode)) {
             List<Long> userIds = getCompanyUserIds(userId, role);
             leads = leadRepository.findByUserIdFkInOrLeadAssignedMemberIn(userIds);
+        } else if ("TEAM_DATA".equals(scopeMode)) {
+            List<Long> teamUserIds = authUtil.getTeamLeadMemberUserIds(user);
+            List<Long> teamIds = authUtil.getTeamLeadTeamIds(user);
+            List<String> memberEmails = authUtil.getTeamLeadMemberEmails(user);
+            if (teamUserIds.isEmpty()) teamUserIds = List.of(-1L);
+            if (teamIds.isEmpty()) teamIds = List.of(-1L);
+            if (memberEmails.isEmpty()) memberEmails = List.of("__NONE__");
+            leads = leadRepository.findByTeamLeadCriteria(teamUserIds, teamIds, memberEmails);
         } else {
-            // Standard user/team member sees ONLY their own created or assigned leads
+            // OWN_DATA_ONLY
             leads = leadRepository.findByUserIdFkOrLeadAssignedMember(userId);
         }
         populateCreatorInfoIfMissing(leads);
@@ -657,6 +673,10 @@ public class LeadService {
         } else if (authUtil.isAdmin(role)) {
             List<Long> userIds = getCompanyUserIds(userId, role);
             leads = leadRepository.findByUserIdFkInAndLeadStatus(userIds, status);
+        } else if (authUtil.isTeamLead(role)) {
+            User user = userRepository.findById(userId).orElse(null);
+            List<Long> teamUserIds = authUtil.getTeamLeadMemberUserIds(user);
+            leads = leadRepository.findByUserIdFkInAndLeadStatus(teamUserIds, status);
         } else {
             leads = leadRepository.findByUserIdFkOrLeadAssignedMemberAndLeadStatus(userId, status);
         }

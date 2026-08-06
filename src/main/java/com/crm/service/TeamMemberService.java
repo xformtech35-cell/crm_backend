@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -34,7 +35,31 @@ public class TeamMemberService {
         if (authUtil.isSuperAdmin(role)) {
             members = teamMemberRepository.findAll();
         } else {
-            members = teamMemberRepository.findByUserIdFk(userId);
+            User user = userRepository.findById(userId).orElse(null);
+            String scopeMode = authUtil.resolveDataScopeMode(user, "TEAM_MEMBERS");
+
+            if ("ALL_DATA".equals(scopeMode)) {
+                Long companyId = authUtil.getCompanyAdminId(user);
+                members = teamMemberRepository.findByUserIdFk(companyId != null ? companyId : userId);
+            } else if ("TEAM_DATA".equals(scopeMode)) {
+                List<String> teammateEmails = authUtil.getTeamLeadMemberEmails(user);
+                if (teammateEmails.isEmpty()) {
+                    members = new ArrayList<>();
+                } else {
+                    members = teamMemberRepository.findAll().stream()
+                            .filter(tm -> tm.getTeamMemberEmail() != null && teammateEmails.contains(tm.getTeamMemberEmail().trim().toLowerCase()))
+                            .collect(java.util.stream.Collectors.toList());
+                }
+            } else {
+                // OWN_DATA_ONLY
+                if (user != null && user.getUserEmail() != null) {
+                    members = teamMemberRepository.findByTeamMemberEmail(user.getUserEmail())
+                            .map(List::of)
+                            .orElseGet(java.util.ArrayList::new);
+                } else {
+                    members = new java.util.ArrayList<>();
+                }
+            }
         }
         for (TeamMember member : members) {
             populateUserFields(member);
@@ -62,14 +87,29 @@ public class TeamMemberService {
                 .orElse(false);
     }
 
+    private boolean isRoleAdminOrSuperAdminOrTeamLead(Long roleId) {
+        if (roleId == null) return false;
+        return roleRepository.findById(roleId)
+                .map(r -> {
+                    String name = r.getRoleName();
+                    return "ADMIN".equalsIgnoreCase(name) || "SUPER_ADMIN".equalsIgnoreCase(name) || "SUPER ADMIN".equalsIgnoreCase(name) || "TEAM LEAD".equalsIgnoreCase(name) || "TEAM_LEAD".equalsIgnoreCase(name);
+                })
+                .orElse(false);
+    }
+
     @Transactional
     public TeamMember create(TeamMemberRequest req, User currentUser) {
         String currentRole = currentUser.getRole();
-        if (!authUtil.isAnyAdmin(currentRole)) {
+        boolean isManager = authUtil.isAnyAdmin(currentRole) || authUtil.isTeamLead(currentRole);
+        if (!isManager) {
             throw new AccessDeniedException("Access denied");
         }
 
-        if (authUtil.isAdmin(currentRole)) {
+        if (authUtil.isTeamLead(currentRole)) {
+            if (isRoleAdminOrSuperAdminOrTeamLead(req.getTeamMemberRole())) {
+                throw new AccessDeniedException("Team Leads cannot create Admin, Super Admin, or Team Lead members");
+            }
+        } else if (authUtil.isAdmin(currentRole)) {
             if (isRoleAdminOrSuperAdmin(req.getTeamMemberRole())) {
                 throw new AccessDeniedException("Admins cannot create Admin or Super Admin members");
             }
@@ -82,6 +122,9 @@ public class TeamMemberService {
         if (req.getPassword() == null || req.getPassword().isBlank()) {
             throw new BadRequestException("Password is required for new team members");
         }
+
+        // Determine company admin ID
+        Long companyAdminId = authUtil.getCompanyAdminId(currentUser);
 
         // Also create a User account so the team member can login
         User user = User.builder()
@@ -98,7 +141,7 @@ public class TeamMemberService {
                 .teamMemberRole(req.getTeamMemberRole())
                 .teamMemberMobile(req.getTeamMemberMobile())
                 .teamMemberEmail(req.getTeamMemberEmail())
-                .userIdFk(currentUser.getUserid())
+                .userIdFk(companyAdminId)
                 .build();
         TeamMember saved = teamMemberRepository.save(member);
         populateUserFields(saved);
@@ -108,7 +151,8 @@ public class TeamMemberService {
     @Transactional
     public TeamMember update(Long id, TeamMemberRequest req, User currentUser) {
         String currentRole = currentUser.getRole();
-        if (!authUtil.isAnyAdmin(currentRole)) {
+        boolean isManager = authUtil.isAnyAdmin(currentRole) || authUtil.isTeamLead(currentRole);
+        if (!isManager) {
             throw new AccessDeniedException("Access denied");
         }
 
@@ -118,7 +162,14 @@ public class TeamMemberService {
         User targetUser = userRepository.findByUserEmail(member.getTeamMemberEmail())
                 .orElseThrow(() -> new ResourceNotFoundException("User", "email", member.getTeamMemberEmail()));
 
-        if (authUtil.isAdmin(currentRole)) {
+        if (authUtil.isTeamLead(currentRole)) {
+            if (authUtil.isAnyAdmin(targetUser.getRole()) || authUtil.isTeamLead(targetUser.getRole())) {
+                throw new AccessDeniedException("Team Leads cannot edit Admin, Super Admin, or Team Lead members");
+            }
+            if (isRoleAdminOrSuperAdminOrTeamLead(req.getTeamMemberRole())) {
+                throw new AccessDeniedException("Team Leads cannot assign Admin, Super Admin, or Team Lead roles");
+            }
+        } else if (authUtil.isAdmin(currentRole)) {
             if (authUtil.isAnyAdmin(targetUser.getRole())) {
                 throw new AccessDeniedException("Admins cannot edit Admin or Super Admin members");
             }
@@ -154,7 +205,8 @@ public class TeamMemberService {
     @Transactional
     public void delete(Long id, User currentUser) {
         String currentRole = currentUser.getRole();
-        if (!authUtil.isAnyAdmin(currentRole)) {
+        boolean isManager = authUtil.isAnyAdmin(currentRole) || authUtil.isTeamLead(currentRole);
+        if (!isManager) {
             throw new AccessDeniedException("Access denied");
         }
 
@@ -163,7 +215,11 @@ public class TeamMemberService {
         
         User targetUser = userRepository.findByUserEmail(member.getTeamMemberEmail()).orElse(null);
 
-        if (authUtil.isAdmin(currentRole)) {
+        if (authUtil.isTeamLead(currentRole)) {
+            if (targetUser != null && (authUtil.isAnyAdmin(targetUser.getRole()) || authUtil.isTeamLead(targetUser.getRole()))) {
+                throw new AccessDeniedException("Team Leads cannot delete Admin, Super Admin, or Team Lead members");
+            }
+        } else if (authUtil.isAdmin(currentRole)) {
             if (targetUser != null && authUtil.isAnyAdmin(targetUser.getRole())) {
                 throw new AccessDeniedException("Admins cannot delete Admin or Super Admin members");
             }
@@ -176,9 +232,38 @@ public class TeamMemberService {
     }
 
     private void validateTeamMemberAccess(TeamMember member, User currentUser) {
-        if (!authUtil.isSuperAdmin(currentUser.getRole())) {
-            if (member.getUserIdFk() == null || !member.getUserIdFk().equals(currentUser.getUserid())) {
-                throw new AccessDeniedException("Access denied to this team member");
+        if (authUtil.isSuperAdmin(currentUser.getRole())) return;
+
+        Long companyAdminId = authUtil.getCompanyAdminId(currentUser);
+        if (member.getUserIdFk() == null || (!member.getUserIdFk().equals(currentUser.getUserid()) && !member.getUserIdFk().equals(companyAdminId))) {
+            throw new AccessDeniedException("Access denied to this team member");
+        }
+
+        // 1. Prevent editing or deleting Senior Admin accounts by non-super-admins
+        User targetUser = userRepository.findByUserEmail(member.getTeamMemberEmail()).orElse(null);
+        if (targetUser != null && authUtil.isAnyAdmin(targetUser.getRole()) && !authUtil.isSuperAdmin(currentUser.getRole())) {
+            if (!targetUser.getUserid().equals(currentUser.getUserid())) {
+                throw new AccessDeniedException("Cannot modify or manage senior Admin accounts");
+            }
+        }
+
+        // 2. Team Leads can only manage Team Members belonging to their team(s)
+        if (authUtil.isTeamLead(currentUser.getRole())) {
+            if (targetUser != null && (authUtil.isAnyAdmin(targetUser.getRole()) || authUtil.isTeamLead(targetUser.getRole()))) {
+                if (!targetUser.getUserid().equals(currentUser.getUserid())) {
+                    throw new AccessDeniedException("Team Leads cannot modify or manage Admin or other Team Lead accounts");
+                }
+            }
+            List<String> teammateEmails = authUtil.getTeamLeadMemberEmails(currentUser);
+            if (!teammateEmails.contains(member.getTeamMemberEmail().trim().toLowerCase())) {
+                throw new AccessDeniedException("Team Leads can only manage team members assigned to their team");
+            }
+        }
+
+        // 3. Regular Team Members cannot edit or delete Team Leads or Admins
+        if (!authUtil.isAnyAdmin(currentUser.getRole()) && !authUtil.isTeamLead(currentUser.getRole())) {
+            if (!member.getTeamMemberEmail().equalsIgnoreCase(currentUser.getUserEmail())) {
+                throw new AccessDeniedException("Team Members can only manage their own account");
             }
         }
     }

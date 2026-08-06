@@ -22,6 +22,9 @@ public interface LeadRepository extends JpaRepository<Lead, Long>, JpaSpecificat
     @Query("SELECT l FROM Lead l WHERE (l.userIdFk IN :userIds OR l.leadAssignedMember IN :userIds) ORDER BY l.leadId DESC")
     List<Lead> findByUserIdFkInOrLeadAssignedMemberIn(@Param("userIds") List<Long> userIds);
 
+    @Query("SELECT DISTINCT l FROM Lead l WHERE (l.userIdFk IN :userIds OR l.leadAssignedMember IN :userIds OR l.leadAssignedTeam IN :teamIds OR LOWER(l.createdBy) IN :emails OR LOWER(l.updatedBy) IN :emails) ORDER BY l.leadId DESC")
+    List<Lead> findByTeamLeadCriteria(@Param("userIds") List<Long> userIds, @Param("teamIds") List<Long> teamIds, @Param("emails") List<String> emails);
+
     @Query("SELECT l FROM Lead l WHERE (l.userIdFk IN :userIds OR l.leadAssignedMember IN :userIds) AND l.leadStatus = :status ORDER BY l.leadId DESC")
     List<Lead> findByUserIdFkInAndLeadStatus(@Param("userIds") List<Long> userIds, @Param("status") String status);
 

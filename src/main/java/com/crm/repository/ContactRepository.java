@@ -10,4 +10,5 @@ import java.util.List;
 @Repository
 public interface ContactRepository extends JpaRepository<Contact, Long>, JpaSpecificationExecutor<Contact> {
     List<Contact> findByUserIdFk(Long userIdFk);
+    List<Contact> findByUserIdFkIn(List<Long> userIds);
 }

@@ -18,13 +18,14 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import com.crm.entity.Lead;
 import com.crm.repository.LeadRepository;
 import java.time.LocalDateTime;
 import java.math.BigDecimal;
 
-// @Component
+@Component
 @RequiredArgsConstructor
 public class DemoAuthBootstrap implements CommandLineRunner {
 
@@ -52,6 +53,14 @@ public class DemoAuthBootstrap implements CommandLineRunner {
     }
 
     private void alterTablesForAutoIncrement() {
+        // Alter Team table for team_lead_id_fk
+        try {
+            jdbcTemplate.execute("ALTER TABLE crm_xformsales_team ADD COLUMN team_lead_id_fk BIGINT");
+            System.out.println("Added column team_lead_id_fk to crm_xformsales_team");
+        } catch (Exception e) {
+            System.out.println("Add team_lead_id_fk column failed: " + e.getMessage());
+        }
+
         // Alter Permission table
         try {
             jdbcTemplate.execute("ALTER TABLE crm_xformsales_permission ADD PRIMARY KEY (permission_id)");
@@ -99,6 +108,7 @@ public class DemoAuthBootstrap implements CommandLineRunner {
         List<String> roles = List.of(
                 "SUPER_ADMIN",
                 "ADMIN",
+                "Team Lead",
                 "Sales Manager",
                 "Sales Executive",
                 "Lead Qualifier",
@@ -106,8 +116,11 @@ public class DemoAuthBootstrap implements CommandLineRunner {
                 "Support Executive"
         );
 
+        List<Role> existingRoles = roleRepository.findAll();
         for (String roleName : roles) {
-            if (!roleRepository.existsByRoleName(roleName)) {
+            boolean exists = existingRoles.stream()
+                    .anyMatch(r -> r.getRoleName() != null && r.getRoleName().equalsIgnoreCase(roleName));
+            if (!exists) {
                 roleRepository.save(Role.builder().roleName(roleName).build());
             }
         }
@@ -133,6 +146,17 @@ public class DemoAuthBootstrap implements CommandLineRunner {
         Map<String, List<String>> permsByRole = Map.of(
                 "SUPER_ADMIN", allPermissions,
                 "ADMIN", allPermissions,
+                "Team Lead", List.of(
+                        "dashboard.view", "leads.view", "leads.create", "leads.edit",
+                        "opportunities.view", "opportunities.create", "opportunities.edit",
+                        "projects.view", "projects.create", "projects.edit",
+                        "tasks.view", "tasks.create", "tasks.edit", "tasks.delete",
+                        "contacts.view", "contacts.create", "contacts.edit",
+                        "organizations.view", "teams.view", "teams.create", "teams.edit",
+                        "users.view", "users.create", "users.edit",
+                        "reports.view", "calendar.view", "calendar.create", "calendar.edit",
+                        "attendance.view", "activities.view", "emails.view", "analytics.view"
+                ),
                 "Sales Manager", List.of(
                         "dashboard.view", "leads.view", "leads.create", "leads.edit",
                         "opportunities.view", "opportunities.create", "projects.view", "tasks.view",
@@ -145,17 +169,21 @@ public class DemoAuthBootstrap implements CommandLineRunner {
                 )
         );
 
+        List<Role> allRoles = roleRepository.findAll();
         for (Map.Entry<String, List<String>> entry : permsByRole.entrySet()) {
-            Optional<Role> roleOpt = roleRepository.findByRoleName(entry.getKey());
-            if (roleOpt.isEmpty()) continue;
+            List<Role> matchingRoles = allRoles.stream()
+                    .filter(r -> r.getRoleName() != null && r.getRoleName().equalsIgnoreCase(entry.getKey()))
+                    .collect(Collectors.toList());
 
-            Long roleId = roleOpt.get().getRoleId();
-            for (String permission : entry.getValue()) {
-                if (!permissionRepository.existsByRoleIdFkAndGrpPerm(roleId, permission)) {
-                    permissionRepository.save(Permission.builder()
-                             .roleIdFk(roleId)
-                             .grpPerm(permission)
-                             .build());
+            for (Role role : matchingRoles) {
+                Long roleId = role.getRoleId();
+                for (String permission : entry.getValue()) {
+                    if (!permissionRepository.existsByRoleIdFkAndGrpPerm(roleId, permission)) {
+                        permissionRepository.save(Permission.builder()
+                                 .roleIdFk(roleId)
+                                 .grpPerm(permission)
+                                 .build());
+                    }
                 }
             }
         }

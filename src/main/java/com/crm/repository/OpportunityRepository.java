@@ -12,6 +12,7 @@ import java.util.List;
 @Repository
 public interface OpportunityRepository extends JpaRepository<Opportunity, Long>, JpaSpecificationExecutor<Opportunity> {
     List<Opportunity> findByUserIdFk(Long userIdFk);
+    List<Opportunity> findByUserIdFkIn(List<Long> userIds);
     List<Opportunity> findByOppStatus(String oppStatus);
     void deleteByLeadIdFk(Long leadIdFk);
     long countByOppStatus(String oppStatus);

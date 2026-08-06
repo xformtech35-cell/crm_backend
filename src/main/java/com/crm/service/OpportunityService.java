@@ -20,10 +20,24 @@ public class OpportunityService {
     private final OpportunityRepository opportunityRepository;
     private final FileUploadUtil fileUploadUtil;
     private final AuthUtil authUtil;
+    private final com.crm.repository.UserRepository userRepository;
+    private final LeadService leadService;
 
-    public List<Opportunity> getAllOpportunities(Long companyAdminId, String role) {
+    public List<Opportunity> getAllOpportunities(Long userId, String role) {
         if (authUtil.isSuperAdmin(role)) return opportunityRepository.findAll();
-        return opportunityRepository.findByUserIdFk(companyAdminId);
+        com.crm.entity.User user = userRepository.findById(userId).orElse(null);
+        String scopeMode = authUtil.resolveDataScopeMode(user, "OPPORTUNITIES");
+
+        if ("ALL_DATA".equals(scopeMode)) {
+            List<Long> companyUserIds = leadService.getCompanyUserIds(userId, role);
+            return opportunityRepository.findByUserIdFkIn(companyUserIds);
+        }
+        if ("TEAM_DATA".equals(scopeMode)) {
+            List<Long> teamUserIds = authUtil.getTeamLeadMemberUserIds(user);
+            if (teamUserIds.isEmpty()) teamUserIds = List.of(-1L);
+            return opportunityRepository.findByUserIdFkIn(teamUserIds);
+        }
+        return opportunityRepository.findByUserIdFk(userId);
     }
 
     public Opportunity getById(Long id) {

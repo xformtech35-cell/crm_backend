@@ -17,11 +17,15 @@ public class TeamService {
     private final TeamRepository teamRepository;
     private final com.crm.util.AuthUtil authUtil;
 
-    public List<Team> getAllTeams(Long companyAdminId, String role) {
+    public List<Team> getAllTeams(com.crm.entity.User user, Long companyAdminId, String role) {
         if (authUtil.isSuperAdmin(role)) {
             return teamRepository.findAll();
         }
-        return teamRepository.findByUserIdFk(companyAdminId);
+        String scopeMode = authUtil.resolveDataScopeMode(user, "TEAMS");
+        if ("ALL_DATA".equals(scopeMode)) {
+            return teamRepository.findByUserIdFk(companyAdminId);
+        }
+        return authUtil.getLedTeamsForUser(user);
     }
 
     public Team getById(Long id) {
@@ -39,12 +43,14 @@ public class TeamService {
         return teamRepository.save(Team.builder()
                 .teamName(req.getTeamName())
                 .userIdFk(authUtil.isSuperAdmin(role) ? null : companyAdminId)
+                .teamLeadId(req.getTeamLeadId())
                 .build());
     }
 
     public Team update(Long id, TeamRequest req) {
         Team team = getById(id);
         team.setTeamName(req.getTeamName());
+        team.setTeamLeadId(req.getTeamLeadId());
         return teamRepository.save(team);
     }
 

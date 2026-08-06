@@ -18,4 +18,7 @@ public class Team {
 
     @Column(name = "user_id_fk")
     private Long userIdFk;
+
+    @Column(name = "team_lead_id_fk")
+    private Long teamLeadId;
 }
