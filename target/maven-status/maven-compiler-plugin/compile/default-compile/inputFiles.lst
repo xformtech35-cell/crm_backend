@@ -3,6 +3,7 @@ C:\Projects\CRM\crm_backend\src\main\java\com\crm\dto\response\AuthResponse.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\exception\GlobalExceptionHandler.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\service\ContactService.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\entity\Attendance.java
+C:\Projects\CRM\crm_backend\src\main\java\com\crm\service\TrashService.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\service\NegotiationService.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\repository\AttendanceRepository.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\repository\NegotiationRevisionRepository.java
@@ -49,6 +50,7 @@ C:\Projects\CRM\crm_backend\src\main\java\com\crm\entity\User.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\controller\LeadScoreController.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\controller\DataScopeConfigController.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\controller\DashboardController.java
+C:\Projects\CRM\crm_backend\src\main\java\com\crm\controller\TrashController.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\entity\CreateTeam.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\repository\LeadRepository.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\controller\OrganizationController.java
@@ -56,6 +58,7 @@ C:\Projects\CRM\crm_backend\src\main\java\com\crm\repository\PermissionRepositor
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\repository\OpportunityRepository.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\dto\request\TeamMemberRequest.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\repository\ProjectRepository.java
+C:\Projects\CRM\crm_backend\src\main\java\com\crm\dto\response\TrashItemResponse.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\repository\TaskTimeLogRepository.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\dto\request\ChangePasswordRequest.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\controller\SuperAdminController.java

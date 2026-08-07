@@ -10,5 +10,8 @@ import java.util.Optional;
 @Repository
 public interface TeamMemberRepository extends JpaRepository<TeamMember, Long> {
     List<TeamMember> findByUserIdFk(Long userIdFk);
-    Optional<TeamMember> findByTeamMemberEmail(String email);
+    Optional<TeamMember> findFirstByTeamMemberEmail(String email);
+    default Optional<TeamMember> findByTeamMemberEmail(String email) {
+        return findFirstByTeamMemberEmail(email);
+    }
 }

@@ -8,6 +8,7 @@ import com.crm.exception.BadRequestException;
 import com.crm.exception.ResourceNotFoundException;
 import com.crm.repository.PermissionRepository;
 import com.crm.repository.RoleRepository;
+import com.crm.repository.UserRepository;
 import com.crm.util.AuthUtil;
 import com.crm.entity.TeamMember;
 import com.crm.repository.TeamMemberRepository;
@@ -16,6 +17,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -26,6 +28,7 @@ public class RoleService {
     private final RoleRepository roleRepository;
     private final PermissionRepository permissionRepository;
     private final TeamMemberRepository teamMemberRepository;
+    private final UserRepository userRepository;
     private final AuthUtil authUtil;
 
     public List<Role> getAllRoles(User currentUser) {
@@ -165,7 +168,7 @@ public class RoleService {
         return permissionRepository.findByRoleIdFk(roleId);
     }
 
-    // MODIFIED: This is the only method that needs to change
+    // MODIFIED: Saves permissions and bidirectionally syncs integrationsAccess on admin users
     @Transactional
     public List<Permission> savePermissions(Long roleId, List<String> permissionNames, User currentUser) {
         Role role = getById(roleId);
@@ -186,11 +189,63 @@ public class RoleService {
         }
 
         permissionRepository.deleteByRoleIdFk(roleId);
-        List<Permission> perms = permissionNames.stream()
-                .filter(p -> p != null && !p.isBlank())
+        List<String> filtered = permissionNames == null ? new ArrayList<>() :
+                permissionNames.stream().filter(p -> p != null && !p.isBlank()).collect(Collectors.toList());
+        List<Permission> perms = filtered.stream()
                 .map(p -> Permission.builder().roleIdFk(roleId).grpPerm(p).build())
                 .collect(Collectors.toList());
-        return permissionRepository.saveAll(perms);
+        List<Permission> saved = permissionRepository.saveAll(perms);
+
+        // BIDIRECTIONAL SYNC: If this is the global ADMIN role, sync integrationsAccess on all admin users
+        if ("ADMIN".equalsIgnoreCase(role.getRoleName()) && role.getUserIdFk() == null) {
+            boolean integrationsEnabled = filtered.contains("integrations.view");
+            List<User> adminUsers = userRepository.findByRole("ADMIN");
+            for (User adminUser : adminUsers) {
+                if (adminUser.isIntegrationsAccess() != integrationsEnabled) {
+                    adminUser.setIntegrationsAccess(integrationsEnabled);
+                    userRepository.save(adminUser);
+                }
+            }
+        }
+
+        return saved;
+    }
+
+    /**
+     * Called by SuperAdminController when a company's integrationsAccess is toggled.
+     * Syncs the global ADMIN role's integrations.view / integrations.edit permissions
+     * to match whether ANY admin user still has integrationsAccess = true.
+     */
+    @Transactional
+    public void syncIntegrationsPermissionFromCompanyAccess() {
+        // Find the global ADMIN role (userIdFk == null)
+        Role adminRole = roleRepository.findByRoleName("ADMIN")
+                .filter(r -> r.getUserIdFk() == null)
+                .orElse(null);
+        if (adminRole == null) return;
+
+        // Check if any admin user has integrations access enabled
+        boolean anyEnabled = userRepository.findByRole("ADMIN")
+                .stream().anyMatch(User::isIntegrationsAccess);
+
+        List<Permission> existingPerms = permissionRepository.findByRoleIdFk(adminRole.getRoleId());
+        boolean hasIntegrationsView = existingPerms.stream()
+                .anyMatch(p -> "integrations.view".equals(p.getGrpPerm()));
+        boolean hasIntegrationsEdit = existingPerms.stream()
+                .anyMatch(p -> "integrations.edit".equals(p.getGrpPerm()));
+
+        if (anyEnabled && !hasIntegrationsView) {
+            // Add integrations permissions to ADMIN role
+            List<Permission> toAdd = new ArrayList<>();
+            toAdd.add(Permission.builder().roleIdFk(adminRole.getRoleId()).grpPerm("integrations.view").build());
+            toAdd.add(Permission.builder().roleIdFk(adminRole.getRoleId()).grpPerm("integrations.edit").build());
+            permissionRepository.saveAll(toAdd);
+        } else if (!anyEnabled && hasIntegrationsView) {
+            // Remove integrations permissions from ADMIN role
+            existingPerms.stream()
+                    .filter(p -> "integrations.view".equals(p.getGrpPerm()) || "integrations.edit".equals(p.getGrpPerm()))
+                    .forEach(permissionRepository::delete);
+        }
     }
 
     public void deletePermission(Long permissionId, User currentUser) {

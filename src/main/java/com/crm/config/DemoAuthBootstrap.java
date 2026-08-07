@@ -140,7 +140,8 @@ public class DemoAuthBootstrap implements CommandLineRunner {
                 "reports.view", "calendar.view", "calendar.create", "calendar.edit", "calendar.delete",
                 "attendance.view", "attendance.edit", "integrations.view", "integrations.edit",
                 "companies.view", "companies.create", "companies.edit", "companies.delete", "audit.view",
-                "activities.view", "emails.view", "analytics.view", "automation.view"
+                "activities.view", "emails.view", "analytics.view", "automation.view",
+                "trash.view", "trash.restore", "trash.delete"
         );
 
         Map<String, List<String>> permsByRole = Map.of(

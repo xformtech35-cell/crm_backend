@@ -16,11 +16,23 @@ public interface DataScopeConfigRepository extends JpaRepository<DataScopeConfig
 
     List<DataScopeConfig> findByUserIdFk(Long userIdFk);
 
-    Optional<DataScopeConfig> findByRoleIdFkAndModuleName(Long roleIdFk, String moduleName);
+    Optional<DataScopeConfig> findFirstByRoleIdFkAndModuleName(Long roleIdFk, String moduleName);
+    default Optional<DataScopeConfig> findByRoleIdFkAndModuleName(Long roleIdFk, String moduleName) {
+        return findFirstByRoleIdFkAndModuleName(roleIdFk, moduleName);
+    }
 
-    Optional<DataScopeConfig> findByUserIdFkAndModuleName(Long userIdFk, String moduleName);
+    Optional<DataScopeConfig> findFirstByUserIdFkAndModuleName(Long userIdFk, String moduleName);
+    default Optional<DataScopeConfig> findByUserIdFkAndModuleName(Long userIdFk, String moduleName) {
+        return findFirstByUserIdFkAndModuleName(userIdFk, moduleName);
+    }
 
-    Optional<DataScopeConfig> findByCompanyAdminIdFkAndRoleIdFkAndModuleName(Long companyAdminIdFk, Long roleIdFk, String moduleName);
+    Optional<DataScopeConfig> findFirstByCompanyAdminIdFkAndRoleIdFkAndModuleName(Long companyAdminIdFk, Long roleIdFk, String moduleName);
+    default Optional<DataScopeConfig> findByCompanyAdminIdFkAndRoleIdFkAndModuleName(Long companyAdminIdFk, Long roleIdFk, String moduleName) {
+        return findFirstByCompanyAdminIdFkAndRoleIdFkAndModuleName(companyAdminIdFk, roleIdFk, moduleName);
+    }
 
-    Optional<DataScopeConfig> findByCompanyAdminIdFkAndUserIdFkAndModuleName(Long companyAdminIdFk, Long userIdFk, String moduleName);
+    Optional<DataScopeConfig> findFirstByCompanyAdminIdFkAndUserIdFkAndModuleName(Long companyAdminIdFk, Long userIdFk, String moduleName);
+    default Optional<DataScopeConfig> findByCompanyAdminIdFkAndUserIdFkAndModuleName(Long companyAdminIdFk, Long userIdFk, String moduleName) {
+        return findFirstByCompanyAdminIdFkAndUserIdFkAndModuleName(companyAdminIdFk, userIdFk, moduleName);
+    }
 }

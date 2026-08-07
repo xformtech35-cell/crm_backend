@@ -7,7 +7,7 @@ import lombok.*;
 @Table(name = "crm_xformsales_team")
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 @org.hibernate.annotations.SQLDelete(sql = "UPDATE crm_xformsales_team SET is_deleted = true, deleted_at = NOW() WHERE team_id = ?")
-@org.hibernate.annotations.SQLRestriction("is_deleted = false")
+@org.hibernate.annotations.SQLRestriction("(is_deleted = false OR is_deleted IS NULL)")
 public class Team {
 
     @Builder.Default

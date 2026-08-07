@@ -8,7 +8,7 @@ import java.time.LocalDate;
 @Table(name = "crm_xformsales_project")
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 @org.hibernate.annotations.SQLDelete(sql = "UPDATE crm_xformsales_project SET is_deleted = true, deleted_at = NOW() WHERE project_id = ?")
-@org.hibernate.annotations.SQLRestriction("is_deleted = false")
+@org.hibernate.annotations.SQLRestriction("(is_deleted = false OR is_deleted IS NULL)")
 public class Project {
 
     @Builder.Default

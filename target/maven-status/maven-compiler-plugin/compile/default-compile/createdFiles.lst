@@ -49,6 +49,7 @@ com\crm\dto\request\ContactRequest.class
 com\crm\service\OpportunityService.class
 com\crm\entity\LeadNote$LeadNoteBuilder.class
 com\crm\exception\ResourceNotFoundException.class
+com\crm\dto\response\TrashItemResponse.class
 com\crm\dto\request\LeadRequest.class
 com\crm\dto\request\TaskRequest.class
 com\crm\service\LeadScoringService$1.class
@@ -65,6 +66,7 @@ com\crm\service\IndiamartIntegrationService.class
 com\crm\dto\request\DocumentUploadRequest$DocumentUploadRequestBuilder.class
 com\crm\entity\Organization$OrganizationBuilder.class
 com\crm\service\TeamMemberService.class
+com\crm\service\TrashService.class
 com\crm\controller\AuthController.class
 com\crm\entity\NegotiationRevision.class
 com\crm\controller\ProjectController.class
@@ -120,6 +122,7 @@ com\crm\entity\Task$TaskBuilder.class
 com\crm\repository\TeamRepository.class
 com\crm\dto\response\AuthResponse$AuthResponseBuilder.class
 com\crm\dto\response\AuthResponse.class
+com\crm\dto\response\TrashItemResponse$TrashItemResponseBuilder.class
 com\crm\entity\LeadReminder$LeadReminderBuilder.class
 com\crm\entity\Project$ProjectBuilder.class
 com\crm\service\DataScopeConfigService.class
@@ -127,6 +130,7 @@ com\crm\controller\CalendarController.class
 com\crm\repository\OpportunityRepository.class
 com\crm\dto\response\LeadScoreResponse$LeadScoreResponseBuilder.class
 com\crm\entity\Lead$LeadBuilder.class
+com\crm\controller\TrashController.class
 com\crm\dto\request\TaskTimeLogRequest.class
 com\crm\dto\response\ApiResponse.class
 com\crm\entity\Opportunity$OpportunityBuilder.class

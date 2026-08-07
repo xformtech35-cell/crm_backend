@@ -301,6 +301,16 @@ public class AuthUtil {
             }
         }
 
+        // 2b. Check TeamMember.teamMemberRole if user.getRole() didn't match a config
+        Optional<TeamMember> tm = teamMemberRepository.findByTeamMemberEmail(user.getUserEmail());
+        if (tm.isPresent() && tm.get().getTeamMemberRole() != null) {
+            Long tmRoleId = tm.get().getTeamMemberRole();
+            Optional<DataScopeConfig> roleConfig = dataScopeConfigRepository.findByRoleIdFkAndModuleName(tmRoleId, normalizedModule);
+            if (roleConfig.isPresent()) {
+                return roleConfig.get().getScopeMode();
+            }
+        }
+
         // 3. Fallback defaults
         if (isTeamLead(user.getRole())) {
             return "TEAM_DATA";

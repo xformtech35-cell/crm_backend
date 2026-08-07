@@ -47,6 +47,9 @@ public class SuperAdminController {
         }
 
         User savedUser = userRepository.save(user);
+        roleService.copyTemplateRolesToCompany(savedUser);
+        // Sync integrations permissions on ADMIN role based on integrationsAccess flag
+        roleService.syncIntegrationsPermissionFromCompanyAccess();
         return ResponseEntity.ok(ApiResponse.success("Company created successfully", savedUser));
     }
 
@@ -73,6 +76,8 @@ public class SuperAdminController {
         }
 
         User savedUser = userRepository.save(existing);
+        // Bidirectional sync: keep global ADMIN role integrations permissions in sync with company flags
+        roleService.syncIntegrationsPermissionFromCompanyAccess();
         return ResponseEntity.ok(ApiResponse.success("Company updated successfully", savedUser));
     }
 

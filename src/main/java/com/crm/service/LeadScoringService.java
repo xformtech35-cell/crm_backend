@@ -171,7 +171,7 @@ public class LeadScoringService {
         String topFactorsJson = toJson(topFactors);
         LocalDateTime now = LocalDateTime.now();
 
-        LeadScore existing = leadScoreRepository.findByLeadIdFk(lead.getLeadId()).orElse(null);
+        LeadScore existing = leadScoreRepository.findFirstByLeadIdFk(lead.getLeadId()).orElse(null);
         boolean changed = existing == null
                 || existing.getScore() == null || existing.getScore() != normalised
                 || existing.getGrade() == null || !existing.getGrade().equals(grade)

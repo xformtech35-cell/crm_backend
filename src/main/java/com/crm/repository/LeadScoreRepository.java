@@ -10,7 +10,10 @@ import java.util.Optional;
 @Repository
 public interface LeadScoreRepository extends JpaRepository<LeadScore, Long> {
 
-    Optional<LeadScore> findByLeadIdFk(Long leadIdFk);
+    Optional<LeadScore> findFirstByLeadIdFk(Long leadIdFk);
+    default Optional<LeadScore> findByLeadIdFk(Long leadIdFk) {
+        return findFirstByLeadIdFk(leadIdFk);
+    }
 
     /** Returns all scores sorted highest first — used by the /scores endpoint */
     List<LeadScore> findAllByOrderByScoreDesc();
