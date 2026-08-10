@@ -44,10 +44,10 @@ public class CalendarService {
         List<Task> tasks;
         List<LeadReminder> reminders;
         if (authUtil.isSuperAdmin(role)) {
-            tasks = taskRepository.findByTaskDueDate(localDate);
+            tasks = taskRepository.findByTaskDueDateStartingWith(date);
             reminders = leadReminderRepository.findByReminderDateOn(localDate);
         } else {
-            tasks = taskRepository.findByUserIdFkAndTaskDueDate(companyAdminId, localDate);
+            tasks = taskRepository.findByUserIdFkAndTaskDueDateStartingWith(companyAdminId, date);
             reminders = leadReminderRepository.findByUserIdFkAndReminderDateOn(companyAdminId, localDate);
         }
 

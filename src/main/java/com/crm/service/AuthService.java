@@ -25,6 +25,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -37,7 +38,10 @@ public class AuthService {
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final PermissionRepository permissionRepository;
+    private final com.crm.repository.UserPermissionRepository userPermissionRepository;
     private final TeamMemberRepository teamMemberRepository;
+    private final com.crm.repository.CreateTeamRepository createTeamRepository;
+    private final com.crm.repository.TeamRepository teamRepository;
     private final AuthenticationManager authenticationManager;
     private final JwtTokenProvider tokenProvider;
     private final PasswordEncoder passwordEncoder;
@@ -59,17 +63,52 @@ public class AuthService {
 
         boolean integrationsAccess = false;
         String userRole = user.getRole();
+        String companyName = "XForm CRM";
+        String teamLeadName = "Not Assigned";
+        Long teamId = null;
+
         if (authUtil.isSuperAdmin(userRole)) {
             integrationsAccess = true;
+            companyName = "Super Admin HQ";
+            teamLeadName = "System Super Admin";
         } else if (authUtil.isAdmin(userRole)) {
             integrationsAccess = user.isIntegrationsAccess();
+            companyName = user.getUsername() != null && !user.getUsername().isBlank() ? user.getUsername() : user.getUserEmail();
+            teamLeadName = "Company Administrator";
         } else {
             Optional<TeamMember> tmOpt = teamMemberRepository.findByTeamMemberEmail(user.getUserEmail());
             if (tmOpt.isPresent()) {
-                Optional<User> adminOpt = userRepository.findById(tmOpt.get().getUserIdFk());
-                if (adminOpt.isPresent()) {
-                    integrationsAccess = adminOpt.get().isIntegrationsAccess();
+                TeamMember tm = tmOpt.get();
+                if (tm.getUserIdFk() != null) {
+                    Optional<User> adminOpt = userRepository.findById(tm.getUserIdFk());
+                    if (adminOpt.isPresent()) {
+                        User adminUser = adminOpt.get();
+                        integrationsAccess = adminUser.isIntegrationsAccess();
+                        companyName = adminUser.getUsername() != null && !adminUser.getUsername().isBlank()
+                                ? adminUser.getUsername() : adminUser.getUserEmail();
+                    }
                 }
+
+                // Resolve teamId and teamLeadName from team membership
+                try {
+                    List<com.crm.entity.CreateTeam> ctList = createTeamRepository.findByTeamMemberIdFk(tm.getTeamMemberId());
+                    if (ctList != null && !ctList.isEmpty()) {
+                        for (com.crm.entity.CreateTeam ct : ctList) {
+                            if (ct.getTeamIdFk() != null) {
+                                teamId = ct.getTeamIdFk(); // cache teamId for JWT claim
+                                Optional<com.crm.entity.Team> teamOpt = teamRepository.findById(ct.getTeamIdFk());
+                                if (teamOpt.isPresent() && teamOpt.get().getTeamLeadId() != null) {
+                                    Long leadId = teamOpt.get().getTeamLeadId();
+                                    Optional<TeamMember> leadOpt = teamMemberRepository.findById(leadId);
+                                    if (leadOpt.isPresent()) {
+                                        teamLeadName = leadOpt.get().getTeamMemberName();
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (Exception ignored) {}
             }
         }
 
@@ -80,8 +119,11 @@ public class AuthService {
         .username(user.getUsername())
         .userEmail(user.getUserEmail())
         .role(resolvedRole)
+        .companyName(companyName)
+        .teamLeadName(teamLeadName)
         .permissions(permissions)
         .integrationsAccess(integrationsAccess)
+        .teamId(teamId)
         .build();
     }
 
@@ -122,11 +164,7 @@ public class AuthService {
         String roleField = user.getRole();
         if (roleField == null) return List.of();
 
-        if (authUtil.isSuperAdmin(roleField) || authUtil.isAdmin(roleField)) {
-            List<String> dbPerms = getPermissionsByRoleField(roleField);
-            if (!dbPerms.isEmpty()) {
-                return dbPerms;
-            }
+        if (authUtil.isSuperAdmin(roleField)) {
             return List.of(
                 "dashboard.view", "roles.view", "settings.view",
                 "leads.view", "leads.create", "leads.edit", "leads.delete", "leads.import",
@@ -140,24 +178,68 @@ public class AuthService {
                 "reports.view", "calendar.view", "calendar.create", "calendar.edit", "calendar.delete",
                 "attendance.view", "attendance.edit", "integrations.view", "integrations.edit",
                 "companies.view", "companies.create", "companies.edit", "companies.delete", "audit.view",
-                "activities.view", "emails.view", "analytics.view", "automation.view"
+                "activities.view", "emails.view", "analytics.view", "automation.view",
+                "trash.view", "trash.restore", "trash.delete", "data_access.view", "data_access.edit"
             );
         }
 
-        return getPermissionsByRoleField(roleField);
+        // 1. User-specific custom permission overrides check (skip expired rows)
+        if (userPermissionRepository != null && userPermissionRepository.existsByUserIdFk(user.getUserid())) {
+            LocalDateTime now = LocalDateTime.now();
+            List<com.crm.entity.UserPermission> userPerms = userPermissionRepository.findByUserIdFk(user.getUserid());
+            List<String> activePerms = userPerms.stream()
+                    .filter(p -> p.getExpiresAt() == null || p.getExpiresAt().isAfter(now))
+                    .map(com.crm.entity.UserPermission::getGrpPerm)
+                    .filter(p -> !"__NONE__".equals(p))
+                    .collect(Collectors.toList());
+            if (!activePerms.isEmpty() || userPerms.stream().anyMatch(p -> "__NONE__".equals(p.getGrpPerm()))) {
+                return activePerms;
+            }
+        }
+
+        // 2. Role permission fallback for Company Admin
+        if (authUtil.isAdmin(roleField)) {
+            Optional<Role> companyAdminRole = roleRepository.findByUserIdFk(user.getUserid())
+                    .stream()
+                    .filter(r -> "ADMIN".equalsIgnoreCase(r.getRoleName()))
+                    .findFirst();
+
+            if (companyAdminRole.isPresent()) {
+                return permissionRepository.findByRoleIdFk(companyAdminRole.get().getRoleId())
+                        .stream().map(Permission::getGrpPerm).collect(Collectors.toList());
+            }
+
+            return List.of();
+        }
+
+        // 3. Check TeamMember record for assigned teamMemberRole
+        if (teamMemberRepository != null) {
+            Optional<com.crm.entity.TeamMember> tmOpt = teamMemberRepository.findByTeamMemberEmail(user.getUserEmail());
+            if (tmOpt.isPresent() && tmOpt.get().getTeamMemberRole() != null) {
+                Long tmRoleId = tmOpt.get().getTeamMemberRole();
+                return permissionRepository.findByRoleIdFk(tmRoleId)
+                        .stream().map(Permission::getGrpPerm).collect(Collectors.toList());
+            }
+        }
+
+        return getPermissionsByRoleField(roleField, user);
     }
 
-    private List<String> getPermissionsByRoleField(String roleField) {
+    private List<String> getPermissionsByRoleField(String roleField, User user) {
+        Long companyAdminId = authUtil.getCompanyAdminId(user);
         Optional<Role> roleOpt = Optional.empty();
         try {
             Long roleId = Long.parseLong(roleField);
             roleOpt = roleRepository.findById(roleId);
         } catch (NumberFormatException e) {
-            roleOpt = roleRepository.findByRoleName(roleField);
-        }
-
-        if (roleOpt.isEmpty()) {
-            roleOpt = roleRepository.findByRoleName(roleField.toUpperCase());
+            if (companyAdminId != null) {
+                roleOpt = roleRepository.findByUserIdFk(companyAdminId).stream()
+                        .filter(r -> roleField.equalsIgnoreCase(r.getRoleName()))
+                        .findFirst();
+            }
+            if (roleOpt.isEmpty()) {
+                roleOpt = roleRepository.findByRoleName(roleField);
+            }
         }
 
         return roleOpt.map(role -> permissionRepository.findByRoleIdFk(role.getRoleId())

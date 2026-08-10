@@ -39,13 +39,13 @@ public class Task {
     private Long taskAssignedTo;
 
     @Column(name = "task_start_date")
-    private LocalDate taskStartDate;
+    private String taskStartDate;
 
     @Column(name = "task_completed_date")
-    private LocalDate taskCompletedDate;
+    private String taskCompletedDate;
 
     @Column(name = "task_due_date")
-    private LocalDate taskDueDate;
+    private String taskDueDate;
 
     @Column(name = "task_related_to")
     private String taskRelatedTo;
@@ -82,11 +82,15 @@ public class Task {
     private String taskCreatedBy;
 
     @Column(name = "task_expected_completion")
-    private LocalDate taskExpectedCompletion;
+    private String taskExpectedCompletion;
 
     @Column(name = "task_period")
     private String taskPeriod;
 
     @Column(name = "task_time_spent_minutes")
     private Integer taskTimeSpentMinutes;
+
+    @Column(name = "email_sent")
+    @Builder.Default
+    private Boolean emailSent = false;
 }

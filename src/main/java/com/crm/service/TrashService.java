@@ -1,8 +1,10 @@
 package com.crm.service;
 
 import com.crm.dto.response.TrashItemResponse;
+import com.crm.entity.Role;
 import com.crm.entity.User;
 import com.crm.repository.PermissionRepository;
+import com.crm.repository.RoleRepository;
 import com.crm.util.AuthUtil;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -14,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -22,12 +25,24 @@ public class TrashService {
     @PersistenceContext
     private final EntityManager entityManager;
     private final PermissionRepository permissionRepository;
+    private final RoleRepository roleRepository;
     private final AuthUtil authUtil;
 
     private boolean userHasPermission(User user, String permissionKey) {
         if (user == null) return false;
-        if (authUtil.isAnyAdmin(user.getRole())) {
+        if (authUtil.isSuperAdmin(user.getRole())) {
             return true;
+        }
+        if (authUtil.isAdmin(user.getRole())) {
+            Optional<Role> companyAdminRole = roleRepository.findByUserIdFk(user.getUserid())
+                    .stream()
+                    .filter(r -> "ADMIN".equalsIgnoreCase(r.getRoleName()))
+                    .findFirst();
+
+            if (companyAdminRole.isPresent()) {
+                return permissionRepository.existsByRoleIdFkAndGrpPerm(companyAdminRole.get().getRoleId(), permissionKey);
+            }
+            return false;
         }
         if (user.getRole() == null) return false;
         try {
@@ -51,19 +66,19 @@ public class TrashService {
         fetchModuleTrash(items, "crm_xformsales_lead", "lead_id", "CONCAT(COALESCE(lead_first_name, ''), ' ', COALESCE(lead_last_name, ''))", "Lead", "leads", companyAdminId);
 
         // 2. Contacts
-        fetchModuleTrash(items, "crm_xformsales_contact", "contact_id", "CONCAT(COALESCE(contact_first_name, ''), ' ', COALESCE(contact_last_name, ''))", "Contact", "contacts", companyAdminId);
+        fetchModuleTrash(items, "crm_xformsales_contact", "contact_id", "contact_name", "Contact", "contacts", companyAdminId);
 
         // 3. Opportunities
-        fetchModuleTrash(items, "crm_xformsales_opportunity", "opp_id", "opp_title", "Opportunity", "opportunities", companyAdminId);
+        fetchModuleTrash(items, "crm_xformsales_opportunity", "opp_id", "COALESCE(opp_title, opp_name)", "Opportunity", "opportunities", companyAdminId);
 
         // 4. Organizations
-        fetchModuleTrash(items, "crm_xformsales_organization", "organization_id", "org_name", "Organization", "organizations", companyAdminId);
+        fetchModuleTrash(items, "crm_xformsales_organization", "organization_id", "organization_name", "Organization", "organizations", companyAdminId);
 
         // 5. Projects
         fetchModuleTrash(items, "crm_xformsales_project", "project_id", "project_name", "Project", "projects", companyAdminId);
 
         // 6. Tasks
-        fetchModuleTrash(items, "crm_xformsales_task", "task_id", "task_title", "Task", "tasks", companyAdminId);
+        fetchModuleTrash(items, "crm_xformsales_task", "task_id", "task_name", "Task", "tasks", companyAdminId);
 
         return items;
     }

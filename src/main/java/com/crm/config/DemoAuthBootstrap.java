@@ -102,6 +102,12 @@ public class DemoAuthBootstrap implements CommandLineRunner {
         } catch (Exception e) {
             System.out.println("Alter table user failed: " + e.getMessage());
         }
+
+        try {
+            jdbcTemplate.execute("DELETE FROM crm_xformsales_role WHERE role_name IN ('Akash Kore', 'Meghraj', 'Suhas', 'Karthik', 'Suraj')");
+        } catch (Exception e) {
+            // Cleanup legacy roles if present
+        }
     }
 
     private void ensureRoles() {
@@ -141,7 +147,8 @@ public class DemoAuthBootstrap implements CommandLineRunner {
                 "attendance.view", "attendance.edit", "integrations.view", "integrations.edit",
                 "companies.view", "companies.create", "companies.edit", "companies.delete", "audit.view",
                 "activities.view", "emails.view", "analytics.view", "automation.view",
-                "trash.view", "trash.restore", "trash.delete"
+                "trash.view", "trash.restore", "trash.delete",
+                "data_access.view", "data_access.edit"
         );
 
         Map<String, List<String>> permsByRole = Map.of(

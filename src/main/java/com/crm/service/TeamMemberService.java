@@ -5,8 +5,10 @@ import com.crm.entity.TeamMember;
 import com.crm.entity.User;
 import com.crm.exception.BadRequestException;
 import com.crm.exception.ResourceNotFoundException;
+import com.crm.repository.PermissionRepository;
 import com.crm.repository.RoleRepository;
 import com.crm.repository.TeamMemberRepository;
+import com.crm.repository.UserPermissionRepository;
 import com.crm.repository.UserRepository;
 import com.crm.util.AuthUtil;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +29,8 @@ public class TeamMemberService {
     private final TeamMemberRepository teamMemberRepository;
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
+    private final PermissionRepository permissionRepository;
+    private final UserPermissionRepository userPermissionRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuthUtil authUtil;
 
@@ -43,13 +47,19 @@ public class TeamMemberService {
                 members = teamMemberRepository.findByUserIdFk(companyId != null ? companyId : userId);
             } else if ("TEAM_DATA".equals(scopeMode)) {
                 List<String> teammateEmails = authUtil.getTeamLeadMemberEmails(user);
-                if (teammateEmails.isEmpty()) {
-                    members = new ArrayList<>();
-                } else {
-                    members = teamMemberRepository.findAll().stream()
-                            .filter(tm -> tm.getTeamMemberEmail() != null && teammateEmails.contains(tm.getTeamMemberEmail().trim().toLowerCase()))
-                            .collect(java.util.stream.Collectors.toList());
-                }
+                Long companyId = authUtil.getCompanyAdminId(user);
+                List<TeamMember> companyMembers = teamMemberRepository.findByUserIdFk(companyId != null ? companyId : userId);
+                
+                members = companyMembers.stream()
+                        .filter(tm -> {
+                            if (tm.getTeamMemberEmail() == null) return false;
+                            String email = tm.getTeamMemberEmail().trim().toLowerCase();
+                            // Include assigned team members OR unassigned company members so Team Lead can assign them
+                            boolean isTeammate = teammateEmails.contains(email);
+                            boolean isUnassigned = (tm.getTeamIdFk() == null);
+                            return isTeammate || isUnassigned;
+                        })
+                        .collect(java.util.stream.Collectors.toList());
             } else {
                 // OWN_DATA_ONLY
                 if (user != null && user.getUserEmail() != null) {
@@ -64,6 +74,34 @@ public class TeamMemberService {
         for (TeamMember member : members) {
             populateUserFields(member);
         }
+
+        // Ensure Company Admin user associated with this team is included in the list for visibility
+        if (role != null && !authUtil.isSuperAdmin(role)) {
+            User user = userRepository.findById(userId).orElse(null);
+            if (user != null) {
+                Long companyAdminId = authUtil.getCompanyAdminId(user);
+                if (companyAdminId != null) {
+                    Optional<User> adminOpt = userRepository.findById(companyAdminId);
+                    if (adminOpt.isPresent()) {
+                        User adminUser = adminOpt.get();
+                        boolean adminInList = members.stream().anyMatch(m ->
+                            (m.getTeamMemberEmail() != null && m.getTeamMemberEmail().equalsIgnoreCase(adminUser.getUserEmail()))
+                        );
+                        if (!adminInList && adminUser.getUserEmail() != null) {
+                            TeamMember adminTm = TeamMember.builder()
+                                    .teamMemberId(-adminUser.getUserid())
+                                    .teamMemberName(adminUser.getUsername() != null && !adminUser.getUsername().isBlank() ? adminUser.getUsername() : "Company Admin")
+                                    .teamMemberEmail(adminUser.getUserEmail())
+                                    .teamMemberMobile("")
+                                    .userIdFk(adminUser.getUserid())
+                                    .build();
+                            members.add(0, adminTm);
+                        }
+                    }
+                }
+            }
+        }
+
         return members;
     }
 
@@ -97,10 +135,36 @@ public class TeamMemberService {
                 .orElse(false);
     }
 
+    /**
+     * Check if user has 'users.create' permission via the Roles & Permissions matrix.
+     * First checks user-level overrides, then falls back to role-level permissions.
+     */
+    private boolean hasUsersCreatePermission(User user) {
+        try {
+            // User-level override takes priority
+            if (userPermissionRepository.existsByUserIdFk(user.getUserid())) {
+                return userPermissionRepository.findByUserIdFk(user.getUserid())
+                        .stream().anyMatch(p -> "users.create".equals(p.getGrpPerm()));
+            }
+            // Role-level permission check
+            Long roleId = Long.parseLong(user.getRole());
+            return permissionRepository.existsByRoleIdFkAndGrpPerm(roleId, "users.create");
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     @Transactional
     public TeamMember create(TeamMemberRequest req, User currentUser) {
         String currentRole = currentUser.getRole();
         boolean isManager = authUtil.isAnyAdmin(currentRole) || authUtil.isTeamLead(currentRole);
+
+        // Fallback: honour the Roles & Permissions matrix — if user has
+        // 'users.create' permission they should be allowed to create members.
+        if (!isManager) {
+            isManager = hasUsersCreatePermission(currentUser);
+        }
+
         if (!isManager) {
             throw new AccessDeniedException("Access denied");
         }

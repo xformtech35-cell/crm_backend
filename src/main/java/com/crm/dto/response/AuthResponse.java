@@ -12,8 +12,10 @@ public class AuthResponse {
     private String username;
     private String userEmail;
     private String role;
+    private String companyName;
+    private String teamLeadName;
 
-    
     private List<String> permissions;
     private boolean integrationsAccess;
+    private Long teamId; // Nullable — null for Admin/Super Admin
 }

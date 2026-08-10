@@ -25,9 +25,10 @@ public class RoleController {
     private final AuthUtil authUtil;
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<Role>>> getAll(Authentication auth) {
+    public ResponseEntity<ApiResponse<List<Role>>> getAll(
+            @RequestParam(required = false) Long companyAdminId, Authentication auth) {
         User user = authUtil.getCurrentUser(auth);
-        return ResponseEntity.ok(ApiResponse.success("Roles fetched", roleService.getAllRoles(user)));
+        return ResponseEntity.ok(ApiResponse.success("Roles fetched", roleService.getAllRoles(user, companyAdminId)));
     }
 
     @GetMapping("/{id}")
@@ -74,5 +75,24 @@ public class RoleController {
         User user = authUtil.getCurrentUser(auth);
         roleService.deletePermission(permissionId, user);
         return ResponseEntity.ok(ApiResponse.success("Permission deleted", null));
+    }
+
+    @PostMapping("/{id}/clone")
+    public ResponseEntity<ApiResponse<Role>> cloneRole(
+            @PathVariable Long id,
+            @RequestBody Map<String, String> body,
+            Authentication auth) {
+        User user = authUtil.getCurrentUser(auth);
+        String newName = body.get("roleName");
+        if (newName == null || newName.isBlank()) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("roleName is required"));
+        }
+        return ResponseEntity.ok(ApiResponse.success("Role cloned", roleService.cloneRole(id, newName, user)));
+    }
+
+    @GetMapping("/{id}/user-count")
+    public ResponseEntity<ApiResponse<Long>> getUserCount(@PathVariable Long id, Authentication auth) {
+        authUtil.getCurrentUser(auth); // auth check
+        return ResponseEntity.ok(ApiResponse.success("User count fetched", roleService.getUserCountByRole(id)));
     }
 }

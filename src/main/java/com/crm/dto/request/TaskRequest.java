@@ -1,7 +1,6 @@
 package com.crm.dto.request;
 
 import lombok.*;
-import java.time.LocalDate;
 
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor
 public class TaskRequest {
@@ -10,9 +9,9 @@ public class TaskRequest {
     private Long taskAssignedTeam;
     private String taskAssign;
     private Long taskAssignedTo;
-    private LocalDate taskStartDate;
-    private LocalDate taskCompletedDate;
-    private LocalDate taskDueDate;
+    private String taskStartDate;
+    private String taskCompletedDate;
+    private String taskDueDate;
     private String taskRelatedTo;
     private String taskDescription;
     private String taskPriority;
@@ -22,7 +21,7 @@ public class TaskRequest {
     private String taskPhone;
     private String taskEmail;
     private Long taskProjectId;
-    private LocalDate taskExpectedCompletion;
+    private String taskExpectedCompletion;
     private String taskPeriod;
     private Integer taskTimeSpentMinutes;
 }

@@ -37,6 +37,18 @@ public class TeamMember {
     @Column(name = "user_id_fk")
     private Long userIdFk;
 
+    /** Nullable self-referencing FK to the direct manager/team lead.
+     *  No CascadeType.REMOVE — deleting a lead must NOT delete members.
+     *  Part 0.4: set to NULL when the lead is removed/reassigned. */
+    @Column(name = "reporting_to_fk", nullable = true)
+    private Long reportingToFk;
+
+    /** Denormalized current team assignment for O(1) lookups.
+     *  crm_xformsales_create_team remains authoritative (Part 0.5).
+     *  No cascade — deleting a team must null this, not delete the member. */
+    @Column(name = "team_id_fk", nullable = true)
+    private Long teamIdFk;
+
     @Transient
     private Long userid;
 

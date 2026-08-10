@@ -14,6 +14,7 @@ import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -27,6 +28,7 @@ public class LeadReminderEmailService {
     private final LeadReminderRepository leadReminderRepository;
     private final LeadRepository leadRepository;
     private final UserRepository userRepository;
+    private final com.crm.repository.TaskRepository taskRepository;
     private final JavaMailSender mailSender;
 
     // Runs every 1 minute
@@ -35,21 +37,112 @@ public class LeadReminderEmailService {
         LocalDateTime now = LocalDateTime.now();
         List<LeadReminder> pendingReminders = leadReminderRepository.findPendingReminders(now);
         
-        if (pendingReminders.isEmpty()) {
-            return;
-        }
-
-        log.info("Found {} pending lead reminders to send", pendingReminders.size());
-
-        for (LeadReminder reminder : pendingReminders) {
-            try {
-                sendReminderEmail(reminder);
-                reminder.setSent(true);
-                leadReminderRepository.save(reminder);
-            } catch (Exception e) {
-                log.error("Failed to send email for reminder {}: {}", reminder.getLeadReminderId(), e.getMessage());
+        if (!pendingReminders.isEmpty()) {
+            log.info("Found {} pending lead reminders to send", pendingReminders.size());
+            for (LeadReminder reminder : pendingReminders) {
+                try {
+                    sendReminderEmail(reminder);
+                    reminder.setSent(true);
+                    leadReminderRepository.save(reminder);
+                } catch (Exception e) {
+                    log.error("Failed to send email for reminder {}: {}", reminder.getLeadReminderId(), e.getMessage());
+                }
             }
         }
+
+        List<com.crm.entity.Task> pendingTasks = taskRepository.findPendingTaskReminders();
+        if (!pendingTasks.isEmpty()) {
+            for (com.crm.entity.Task task : pendingTasks) {
+                try {
+                    boolean isDue = false;
+                    String dueDateStr = task.getTaskDueDate();
+                    if (dueDateStr != null && !dueDateStr.trim().isEmpty()) {
+                        try {
+                            String checkStr = dueDateStr.trim();
+                            if (checkStr.length() == 10) {
+                                checkStr += "T23:59:59";
+                            }
+                            LocalDateTime dueTime = LocalDateTime.parse(checkStr.replace(" ", "T"));
+                            if (!dueTime.isAfter(now)) {
+                                isDue = true;
+                            }
+                        } catch (Exception parseEx) {
+                            isDue = true;
+                        }
+                    } else {
+                        isDue = true;
+                    }
+
+                    if (isDue) {
+                        sendTaskReminderEmail(task);
+                        task.setEmailSent(true);
+                        taskRepository.save(task);
+                    }
+                } catch (Exception e) {
+                    log.error("Failed to send email for task reminder {}: {}", task.getTaskId(), e.getMessage());
+                }
+            }
+        }
+    }
+
+    private String formatTaskTime(String rawDueDate) {
+        if (rawDueDate == null || rawDueDate.trim().isEmpty()) {
+            return "Scheduled";
+        }
+        try {
+            String str = rawDueDate.trim().replace(" ", "T");
+            if (str.length() == 10) {
+                return LocalDate.parse(str).format(DateTimeFormatter.ofPattern("dd MMM yyyy"));
+            }
+            if (str.length() == 16) {
+                str += ":00";
+            }
+            String cleanIso = str.length() > 19 ? str.substring(0, 19) : str;
+            LocalDateTime dt = LocalDateTime.parse(cleanIso);
+            return dt.format(DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm a"));
+        } catch (Exception e) {
+            return rawDueDate;
+        }
+    }
+
+    private void sendTaskReminderEmail(com.crm.entity.Task task) throws Exception {
+        Long recipientUserId = task.getTaskAssignedMember() != null ? task.getTaskAssignedMember() : task.getUserIdFk();
+        if (recipientUserId == null) return;
+        Optional<User> userOpt = userRepository.findById(recipientUserId);
+        if (userOpt.isEmpty()) return;
+        User user = userOpt.get();
+        String agentEmail = user.getUserEmail();
+        if (agentEmail == null || agentEmail.trim().isEmpty()) return;
+
+        String agentName = user.getUsername() != null ? user.getUsername() : "User";
+        String taskTitle = task.getTaskName() != null ? task.getTaskName() : "Reminder";
+        String note = task.getTaskDescription() != null ? task.getTaskDescription() : "No details provided.";
+        String timeStr = formatTaskTime(task.getTaskDueDate());
+
+        MimeMessage message = mailSender.createMimeMessage();
+        MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+
+        helper.setTo(agentEmail);
+        helper.setSubject("CRM Reminder Notification: " + taskTitle);
+
+        String htmlContent = "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><style>"
+                + "body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 20px; }"
+                + ".card { max-width: 550px; margin: 0 auto; background: #ffffff; border-radius: 12px; padding: 24px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }"
+                + ".header { font-size: 20px; font-weight: bold; color: #4f46e5; margin-bottom: 12px; }"
+                + ".box { background: #f1f5f9; border-left: 4px solid #4f46e5; padding: 12px; border-radius: 6px; margin: 16px 0; font-size: 15px; color: #334155; }"
+                + ".meta { font-size: 13px; color: #64748b; margin-top: 16px; }"
+                + "</style></head><body>"
+                + "<div class=\"card\">"
+                + "<div class=\"header\">🔔 CRM Reminder Alert</div>"
+                + "<p>Hello <strong>" + agentName + "</strong>,</p>"
+                + "<p>You have a scheduled reminder or task due in your CRM workspace:</p>"
+                + "<div class=\"box\"><strong>" + taskTitle + "</strong><br/><span style=\"font-size: 13px; color: #64748b;\">Time: " + timeStr + "</span><br/><br/>" + note + "</div>"
+                + "<p class=\"meta\">Automated email sent by Xform CRM.</p>"
+                + "</div></body></html>";
+
+        helper.setText(htmlContent, true);
+        mailSender.send(message);
+        log.info("Task reminder email sent to {} for task {}", agentEmail, taskTitle);
     }
 
     public void sendReminderEmailManual(Long reminderId) throws Exception {

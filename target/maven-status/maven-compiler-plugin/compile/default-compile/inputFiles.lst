@@ -3,6 +3,7 @@ C:\Projects\CRM\crm_backend\src\main\java\com\crm\dto\response\AuthResponse.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\exception\GlobalExceptionHandler.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\service\ContactService.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\entity\Attendance.java
+C:\Projects\CRM\crm_backend\src\main\java\com\crm\service\CompanyCascadeDeleteService.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\service\TrashService.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\service\NegotiationService.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\repository\AttendanceRepository.java
@@ -25,6 +26,7 @@ C:\Projects\CRM\crm_backend\src\main\java\com\crm\controller\TaskTimeLogControll
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\config\WebClientConfig.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\repository\RoleRepository.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\dto\response\LeadScoreResponse.java
+C:\Projects\CRM\crm_backend\src\main\java\com\crm\repository\UserPermissionRepository.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\scheduler\TrashCleanupScheduler.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\dto\request\RoleRequest.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\security\JwtAuthenticationFilter.java
@@ -36,6 +38,7 @@ C:\Projects\CRM\crm_backend\src\main\java\com\crm\service\TradeIndiaIntegrationS
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\entity\NegotiationRevision.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\entity\Role.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\service\AttendanceService.java
+C:\Projects\CRM\crm_backend\src\main\java\com\crm\controller\UserPermissionController.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\service\TeamMemberService.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\util\FileUploadUtil.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\service\OpportunityService.java
@@ -60,6 +63,7 @@ C:\Projects\CRM\crm_backend\src\main\java\com\crm\dto\request\TeamMemberRequest.
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\repository\ProjectRepository.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\dto\response\TrashItemResponse.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\repository\TaskTimeLogRepository.java
+C:\Projects\CRM\crm_backend\src\main\java\com\crm\service\UserPermissionService.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\dto\request\ChangePasswordRequest.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\controller\SuperAdminController.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\config\DemoAuthBootstrap.java
@@ -110,6 +114,7 @@ C:\Projects\CRM\crm_backend\src\main\java\com\crm\entity\Opportunity.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\util\AuthUtil.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\repository\TeamRepository.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\service\ProjectService.java
+C:\Projects\CRM\crm_backend\src\main\java\com\crm\entity\UserPermission.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\service\LeadScoringService.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\controller\AttendanceController.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\service\LeadReminderEmailService.java

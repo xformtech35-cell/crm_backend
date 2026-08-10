@@ -36,6 +36,7 @@ com\crm\entity\User.class
 com\crm\config\WebClientConfig.class
 com\crm\entity\LeadSourceMaster.class
 com\crm\entity\Document$DocumentBuilder.class
+com\crm\entity\UserPermission.class
 com\crm\config\DemoAuthBootstrap.class
 com\crm\security\JwtTokenProvider.class
 com\crm\service\LeadScoringService.class
@@ -84,11 +85,13 @@ com\crm\service\NegotiationService.class
 com\crm\dto\request\CreateTeamRequest.class
 com\crm\dto\request\OpportunityRequest.class
 com\crm\entity\IntegrationConfig.class
+com\crm\service\UserPermissionService.class
 com\crm\entity\NegotiationRevision$NegotiationRevisionBuilder.class
 com\crm\entity\DataScopeConfig$DataScopeConfigBuilder.class
 com\crm\entity\CreateTeam$CreateTeamBuilder.class
 com\crm\service\CalendarService.class
 com\crm\service\TaskService.class
+com\crm\repository\UserPermissionRepository.class
 com\crm\repository\LeadNoteRepository.class
 com\crm\scheduler\TrashCleanupScheduler.class
 com\crm\controller\DashboardController.class
@@ -100,8 +103,10 @@ com\crm\service\CreateTeamService.class
 com\crm\repository\LeadGroupRepository.class
 com\crm\service\DocumentService.class
 com\crm\controller\CreateTeamController.class
+com\crm\entity\UserPermission$UserPermissionBuilder.class
 com\crm\repository\PermissionRepository.class
 com\crm\entity\DataScopeConfig.class
+com\crm\service\CompanyCascadeDeleteService.class
 com\crm\dto\response\LeadScoreResponse.class
 com\crm\exception\BadRequestException.class
 com\crm\security\UserDetailsServiceImpl.class
@@ -135,6 +140,7 @@ com\crm\dto\request\TaskTimeLogRequest.class
 com\crm\dto\response\ApiResponse.class
 com\crm\entity\Opportunity$OpportunityBuilder.class
 com\crm\entity\Document.class
+com\crm\controller\UserPermissionController.class
 com\crm\dto\request\DataScopeConfigRequest.class
 com\crm\dto\request\TeamRequest.class
 com\crm\service\TeamService.class

@@ -22,6 +22,7 @@ public class SuperAdminController {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final RoleService roleService;
+    private final com.crm.service.CompanyCascadeDeleteService companyCascadeDeleteService;
 
     @GetMapping
     public ResponseEntity<ApiResponse<List<User>>> getAllCompanies() {
@@ -83,10 +84,7 @@ public class SuperAdminController {
 
     @DeleteMapping("/{id}")
     public ResponseEntity<ApiResponse<Void>> deleteCompany(@PathVariable Long id) {
-        User existing = userRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Company", "id", id));
-        
-        userRepository.delete(existing);
-        return ResponseEntity.ok(ApiResponse.success("Company deleted successfully", null));
+        companyCascadeDeleteService.deleteCompanyAndAllAssociatedData(id);
+        return ResponseEntity.ok(ApiResponse.success("Company and all associated logins and records deleted successfully", null));
     }
 }

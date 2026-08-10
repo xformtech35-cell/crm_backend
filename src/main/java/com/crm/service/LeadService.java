@@ -1034,8 +1034,8 @@ public class LeadService {
                     .taskAssignedMember(lead.getLeadAssignedMember())
                     .taskAssignedTo(lead.getLeadAssignedMember())
                     .taskAssign("To Do")
-                    .taskStartDate(LocalDate.now())
-                    .taskDueDate(LocalDate.now().plusDays(2))
+                    .taskStartDate(LocalDate.now().toString())
+                    .taskDueDate(LocalDate.now().plusDays(2).toString())
                     .taskRelatedTo(relatedTo)
                     .taskDescription("Auto-generated Sales Task for Qualified Lead.\n"
                             + "Enquiry Details:\n"
@@ -1078,8 +1078,8 @@ public class LeadService {
                     .taskAssignedMember(lead.getLeadAssignedMember())
                     .taskAssignedTo(lead.getLeadAssignedMember())
                     .taskAssign("To Do")
-                    .taskStartDate(LocalDate.now())
-                    .taskDueDate(LocalDate.now().plusWeeks(1))
+                    .taskStartDate(LocalDate.now().toString())
+                    .taskDueDate(LocalDate.now().plusWeeks(1).toString())
                     .taskRelatedTo(relatedTo)
                     .taskDescription("Auto-generated Project Task for WON Lead.\n"
                             + "Quotation Details:\n"

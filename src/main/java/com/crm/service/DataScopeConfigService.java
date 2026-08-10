@@ -17,6 +17,12 @@ public class DataScopeConfigService {
 
     private final DataScopeConfigRepository dataScopeConfigRepository;
     private final RoleRepository roleRepository;
+    private final AuditLogService auditLogService;
+
+    private static final List<String> ALL_MODULES = List.of(
+        "LEADS", "OPPORTUNITIES", "TASKS", "PROJECTS", "CONTACTS",
+        "ORGANIZATIONS", "TEAMS", "CALENDAR", "ATTENDANCE", "REPORTS"
+    );
 
     public List<DataScopeConfig> getAllConfigs(Long companyAdminId) {
         if (companyAdminId == null) {
@@ -26,23 +32,24 @@ public class DataScopeConfigService {
     }
 
     @Transactional
-    public DataScopeConfig saveConfig(DataScopeConfigRequest req, Long companyAdminId) {
+    public DataScopeConfig saveConfig(DataScopeConfigRequest req, Long companyAdminId, Long actorUserId) {
         String moduleName = req.getModuleName().toUpperCase();
-        String scopeMode = req.getScopeMode().toUpperCase();
+        String scopeMode  = req.getScopeMode().toUpperCase();
 
         Optional<DataScopeConfig> existingOpt;
         if (req.getUserIdFk() != null) {
             existingOpt = companyAdminId == null
-                    ? dataScopeConfigRepository.findByUserIdFkAndModuleName(req.getUserIdFk(), moduleName)
-                    : dataScopeConfigRepository.findByCompanyAdminIdFkAndUserIdFkAndModuleName(companyAdminId, req.getUserIdFk(), moduleName);
+                ? dataScopeConfigRepository.findByUserIdFkAndModuleName(req.getUserIdFk(), moduleName)
+                : dataScopeConfigRepository.findByCompanyAdminIdFkAndUserIdFkAndModuleName(companyAdminId, req.getUserIdFk(), moduleName);
         } else if (req.getRoleIdFk() != null) {
             existingOpt = companyAdminId == null
-                    ? dataScopeConfigRepository.findByRoleIdFkAndModuleName(req.getRoleIdFk(), moduleName)
-                    : dataScopeConfigRepository.findByCompanyAdminIdFkAndRoleIdFkAndModuleName(companyAdminId, req.getRoleIdFk(), moduleName);
+                ? dataScopeConfigRepository.findByRoleIdFkAndModuleName(req.getRoleIdFk(), moduleName)
+                : dataScopeConfigRepository.findByCompanyAdminIdFkAndRoleIdFkAndModuleName(companyAdminId, req.getRoleIdFk(), moduleName);
         } else {
             throw new IllegalArgumentException("Either roleIdFk or userIdFk must be specified");
         }
 
+        String oldScope = existingOpt.map(DataScopeConfig::getScopeMode).orElse(null);
         DataScopeConfig config;
         if (existingOpt.isPresent()) {
             config = existingOpt.get();
@@ -56,14 +63,36 @@ public class DataScopeConfigService {
                     .scopeMode(scopeMode)
                     .build();
         }
+        DataScopeConfig saved = dataScopeConfigRepository.save(config);
 
-        return dataScopeConfigRepository.save(config);
+        if (actorUserId != null && !scopeMode.equals(oldScope)) {
+            auditLogService.log(actorUserId, "SCOPE_CHANGE", "DataScopeConfig",
+                saved.getConfigId(), oldScope, scopeMode, companyAdminId);
+        }
+        return saved;
+    }
+
+    @Transactional
+    public DataScopeConfig saveConfig(DataScopeConfigRequest req, Long companyAdminId) {
+        return saveConfig(req, companyAdminId, null);
+    }
+
+    @Transactional
+    public List<DataScopeConfig> saveBatchConfigs(List<DataScopeConfigRequest> requests, Long companyAdminId, Long actorUserId) {
+        return requests.stream().map(req -> saveConfig(req, companyAdminId, actorUserId)).toList();
     }
 
     @Transactional
     public List<DataScopeConfig> saveBatchConfigs(List<DataScopeConfigRequest> requests, Long companyAdminId) {
-        return requests.stream()
-                .map(req -> saveConfig(req, companyAdminId))
+        return saveBatchConfigs(requests, companyAdminId, null);
+    }
+
+    @Transactional
+    public List<DataScopeConfig> saveAllModulesForRole(Long roleId, String scopeMode, Long companyAdminId, Long actorUserId) {
+        List<DataScopeConfigRequest> requests = ALL_MODULES.stream()
+                .map(module -> DataScopeConfigRequest.builder()
+                        .roleIdFk(roleId).moduleName(module).scopeMode(scopeMode).build())
                 .toList();
+        return saveBatchConfigs(requests, companyAdminId, actorUserId);
     }
 }
