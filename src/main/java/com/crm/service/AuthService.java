@@ -156,7 +156,7 @@ public class AuthService {
         user.setResetPasswordTokenExpiry(LocalDateTime.now().plusMinutes(30));
         userRepository.save(user);
 
-        String resetUrl = "https://xformcrm.xformtechnologies.com/#/reset-password?token=" + token;
+        String resetUrl = "https://xformcrm.xformtechnologies.com/reset-password?token=" + token;
 
         try {
             MimeMessage message = mailSender.createMimeMessage();
