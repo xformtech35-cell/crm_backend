@@ -123,13 +123,13 @@ public class LeadService {
         Long selectedTmId = authUtil.getSelectedTeamMemberId();
         if (selectedTmId != null) {
             Optional<TeamMember> tmOpt = teamMemberRepository.findById(selectedTmId);
-            if (tmOpt.isPresent()) {
+            if (tmOpt.isPresent() && adminId.equals(tmOpt.get().getUserIdFk())) {
                 Optional<User> uOpt = userRepository.findByUserEmail(tmOpt.get().getTeamMemberEmail());
                 if (uOpt.isPresent()) {
                     return List.of(uOpt.get().getUserid());
                 }
+                return List.of(selectedTmId);
             }
-            return List.of(selectedTmId);
         }
 
         List<Long> userIds = new ArrayList<>();
