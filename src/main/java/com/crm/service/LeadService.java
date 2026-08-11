@@ -214,15 +214,14 @@ public class LeadService {
             MultipartFile doc, MultipartFile doc1,
             MultipartFile doc2, MultipartFile doc3) throws IOException {
         Lead lead = mapToEntity(request, new Lead());
-        if (request.getUserIdFk() != null) {
-            lead.setUserIdFk(request.getUserIdFk());
-        } else {
-            lead.setUserIdFk(userId);
-        }
+        User currentUser = userRepository.findById(userId).orElse(null);
+        Long companyAdminId = authUtil.getCompanyAdminId(currentUser);
+        if (companyAdminId == null) companyAdminId = userId;
+        lead.setUserIdFk(companyAdminId);
+
         lead.setLeadCreatedDate(LocalDateTime.now());
         lead.setUpdatedDate(LocalDateTime.now());
 
-        User currentUser = userRepository.findById(userId).orElse(null);
         String creatorDisplay = currentUser != null && currentUser.getUserEmail() != null ? currentUser.getUserEmail() : "Admin";
         if (request.getCreatedBy() != null && !request.getCreatedBy().isBlank()) {
             lead.setCreatedBy(request.getCreatedBy());
@@ -313,8 +312,10 @@ public class LeadService {
             lead.setEnquiryStatus(null);
         }
 
-        if (request.getUserIdFk() != null) {
-            lead.setUserIdFk(request.getUserIdFk());
+        if (lead.getUserIdFk() == null) {
+            User currentUser = userRepository.findById(userId).orElse(null);
+            Long companyAdminId = authUtil.getCompanyAdminId(currentUser);
+            lead.setUserIdFk(companyAdminId != null ? companyAdminId : userId);
         }
 
         // Upload Documents with correct relative path for /api/view/ endpoint
