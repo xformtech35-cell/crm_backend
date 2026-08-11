@@ -76,7 +76,7 @@ public class CompanyCascadeDeleteService {
                 .executeUpdate();
 
         // Create Teams mapping
-        entityManager.createNativeQuery("DELETE FROM crm_create_team WHERE user_id_fk IN (:uids)")
+        entityManager.createNativeQuery("DELETE FROM crm_xformsales_create_team WHERE user_id_fk IN (:uids)")
                 .setParameter("uids", uidsList)
                 .executeUpdate();
 
