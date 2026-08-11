@@ -9,6 +9,9 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+
 import java.time.LocalDateTime;
 
 @Slf4j
@@ -19,6 +22,7 @@ public class AuditLogService {
     private final AuditLogRepository auditLogRepository;
     private final ObjectMapper objectMapper;
 
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void log(Long actorUserId, String actionType, String entityType,
                     Long entityId, Object oldValue, Object newValue, Long companyAdminId) {
         try {
