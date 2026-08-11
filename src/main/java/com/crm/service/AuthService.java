@@ -2,6 +2,7 @@ package com.crm.service;
 
 import com.crm.dto.request.ChangePasswordRequest;
 import com.crm.dto.request.LoginRequest;
+import com.crm.dto.request.ResetPasswordRequest;
 import com.crm.dto.response.ApiResponse;
 import com.crm.dto.response.AuthResponse;
 import com.crm.entity.Permission;
@@ -16,9 +17,11 @@ import com.crm.repository.TeamMemberRepository;
 import com.crm.entity.TeamMember;
 import com.crm.security.JwtTokenProvider;
 import com.crm.util.AuthUtil;
+import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -142,22 +145,69 @@ public class AuthService {
     }
 
     public void forgotPassword(String email) {
-        User user = userRepository.findByUserEmail(email)
+        if (email == null || email.isBlank()) {
+            throw new BadRequestException("Email is required");
+        }
+        User user = userRepository.findByUserEmail(email.trim())
                 .orElseThrow(() -> new ResourceNotFoundException("User", "email", email));
 
-        String resetPassword = UUID.randomUUID().toString().substring(0, 8);
-        user.setPassword(passwordEncoder.encode(resetPassword));
+        String token = UUID.randomUUID().toString();
+        user.setResetPasswordToken(token);
+        user.setResetPasswordTokenExpiry(LocalDateTime.now().plusMinutes(30));
         userRepository.save(user);
 
+        String resetUrl = "https://xformcrm.xformtechnologies.com/reset-password?token=" + token;
+
         try {
-            SimpleMailMessage message = new SimpleMailMessage();
-            message.setTo(email);
-            message.setSubject("CRM - Password Reset");
-            message.setText("Your new password is: " + resetPassword + "\nPlease change it after login.");
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setTo(user.getUserEmail());
+            helper.setSubject("XForm CRM - Reset Your Password");
+
+            String htmlBody = "<div style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; rounded-lg: 8px;'>"
+                    + "<h2 style='color: #4f46e5;'>XForm CRM Password Reset</h2>"
+                    + "<p>Hello,</p>"
+                    + "<p>We received a request to reset the password for your XForm CRM account (<strong>" + user.getUserEmail() + "</strong>).</p>"
+                    + "<p>Click the button below to set a new password. This link is valid for <strong>30 minutes</strong>:</p>"
+                    + "<div style='margin: 25px 0;'>"
+                    + "<a href='" + resetUrl + "' style='background-color: #4f46e5; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;'>Reset Password</a>"
+                    + "</div>"
+                    + "<p style='font-size: 13px; color: #64748b;'>Or copy and paste this link into your browser:<br/><a href='" + resetUrl + "'>" + resetUrl + "</a></p>"
+                    + "<hr style='border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;'/>"
+                    + "<p style='font-size: 12px; color: #94a3b8;'>If you did not request a password reset, please ignore this email.</p>"
+                    + "</div>";
+
+            helper.setText(htmlBody, true);
             mailSender.send(message);
-        } catch (Exception ignored) {
-            // mail failure should not block the operation; user can contact admin
+        } catch (Exception e) {
+            // Fallback to simple mail text if MIME fails
+            try {
+                SimpleMailMessage message = new SimpleMailMessage();
+                message.setTo(user.getUserEmail());
+                message.setSubject("XForm CRM - Reset Your Password");
+                message.setText("Reset your password using this link (expires in 30 mins):\n" + resetUrl);
+                mailSender.send(message);
+            } catch (Exception mailEx) {
+                // Ignore mail exception so response succeeds
+            }
         }
+    }
+
+    public void resetPassword(ResetPasswordRequest request) {
+        if (request.getToken() == null || request.getToken().isBlank()) {
+            throw new BadRequestException("Reset token is required");
+        }
+        User user = userRepository.findByResetPasswordToken(request.getToken().trim())
+                .orElseThrow(() -> new BadRequestException("Invalid or expired password reset token"));
+
+        if (user.getResetPasswordTokenExpiry() == null || user.getResetPasswordTokenExpiry().isBefore(LocalDateTime.now())) {
+            throw new BadRequestException("Password reset token has expired. Please request a new one.");
+        }
+
+        user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        user.setResetPasswordToken(null);
+        user.setResetPasswordTokenExpiry(null);
+        userRepository.save(user);
     }
 
     private List<String> getPermissionsForUser(User user) {

@@ -45,6 +45,12 @@ public class AuthController {
     @PostMapping("/forgot-password")
     public ResponseEntity<ApiResponse<Void>> forgotPassword(@RequestBody Map<String, String> body) {
         authService.forgotPassword(body.get("email"));
-        return ResponseEntity.ok(ApiResponse.success("Password reset email sent", null));
+        return ResponseEntity.ok(ApiResponse.success("Password reset email sent. Please check your inbox.", null));
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<ApiResponse<Void>> resetPassword(@Valid @RequestBody com.crm.dto.request.ResetPasswordRequest request) {
+        authService.resetPassword(request);
+        return ResponseEntity.ok(ApiResponse.success("Password reset successfully. You can now log in.", null));
     }
 }

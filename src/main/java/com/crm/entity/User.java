@@ -50,6 +50,12 @@ public class User {
     @Column(name = "integrations_access")
     private Boolean integrationsAccess;
 
+    @Column(name = "reset_password_token")
+    private String resetPasswordToken;
+
+    @Column(name = "reset_password_token_expiry")
+    private java.time.LocalDateTime resetPasswordTokenExpiry;
+
     public boolean isIntegrationsAccess() {
         return integrationsAccess != null && integrationsAccess;
     }
