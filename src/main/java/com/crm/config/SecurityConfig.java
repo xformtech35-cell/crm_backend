@@ -50,9 +50,8 @@ public class SecurityConfig {
                         "/api-file/**", 
                         "/api/documents/**",      // ✅ Document upload/download endpoints
                         "/api/documents/upload",
-                        "/api/leads/{id}"
-
-                        
+                        "/api/leads/{id}",
+                        "/ws-crm/**"              // ✅ Allow STOMP WebSocket handshake
                     ).permitAll()
                     .anyRequest().authenticated()
                 )
