@@ -26,6 +26,8 @@ public class TaskService {
     @org.springframework.context.annotation.Lazy
     private final LeadService leadService;
 
+    private final com.crm.repository.TeamMemberRepository teamMemberRepository;
+
     /**
      * Data isolation:
      * - SUPER_ADMIN: all tasks
@@ -52,7 +54,10 @@ public class TaskService {
             return taskRepository.findByTeamLeadCriteria(teamUserIds, teamIds);
         }
         // OWN_DATA_ONLY
-        return taskRepository.findByTaskAssignedMemberOrTaskAssignedToOrUserIdFk(userId, userId, userId);
+        com.crm.entity.TeamMember tm = teamMemberRepository.findByTeamMemberEmail(user != null ? user.getUserEmail() : "").orElse(null);
+        Long teamMemberId = tm != null ? tm.getTeamMemberId() : null;
+        String userEmail = user != null ? user.getUserEmail() : null;
+        return taskRepository.findByOwnDataCriteria(userId, teamMemberId, userEmail);
     }
 
     public Task getById(Long id) {

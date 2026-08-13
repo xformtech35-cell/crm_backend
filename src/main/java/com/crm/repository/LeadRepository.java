@@ -34,6 +34,36 @@ public interface LeadRepository extends JpaRepository<Lead, Long>, JpaSpecificat
     @Query("SELECT l FROM Lead l WHERE (l.userIdFk = :userId OR l.leadAssignedMember = :userId) AND l.leadStatus = :status ORDER BY l.leadId DESC")
     List<Lead> findByUserIdFkOrLeadAssignedMemberAndLeadStatus(@Param("userId") Long userId, @Param("status") String status);
 
+    @Query("SELECT DISTINCT l FROM Lead l WHERE " +
+           "(l.userIdFk = :userId OR " +
+           "l.leadAssignedMember = :userId OR " +
+           "(:teamMemberId IS NOT NULL AND l.leadAssignedMember = :teamMemberId) OR " +
+           "(:userEmail IS NOT NULL AND LOWER(l.createdBy) = LOWER(:userEmail)) OR " +
+           "(:teamMemberName IS NOT NULL AND LOWER(l.leadRef) = LOWER(:teamMemberName))) " +
+           "ORDER BY l.leadId DESC")
+    List<Lead> findByOwnDataCriteria(
+        @Param("userId") Long userId,
+        @Param("teamMemberId") Long teamMemberId,
+        @Param("userEmail") String userEmail,
+        @Param("teamMemberName") String teamMemberName
+    );
+
+    @Query("SELECT DISTINCT l FROM Lead l WHERE " +
+           "((l.userIdFk = :userId OR " +
+           "l.leadAssignedMember = :userId OR " +
+           "(:teamMemberId IS NOT NULL AND l.leadAssignedMember = :teamMemberId) OR " +
+           "(:userEmail IS NOT NULL AND LOWER(l.createdBy) = LOWER(:userEmail)) OR " +
+           "(:teamMemberName IS NOT NULL AND LOWER(l.leadRef) = LOWER(:teamMemberName))) AND " +
+           "l.leadStatus = :status) " +
+           "ORDER BY l.leadId DESC")
+    List<Lead> findByOwnDataCriteriaAndStatus(
+        @Param("userId") Long userId,
+        @Param("teamMemberId") Long teamMemberId,
+        @Param("userEmail") String userEmail,
+        @Param("teamMemberName") String teamMemberName,
+        @Param("status") String status
+    );
+
 
     Optional<Lead> findByUniqueQueryId(String uniqueQueryId);
 

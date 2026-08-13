@@ -19,6 +19,19 @@ public interface TaskRepository extends JpaRepository<Task, Long>, JpaSpecificat
 
     @org.springframework.data.jpa.repository.Query("SELECT DISTINCT t FROM Task t WHERE (t.userIdFk IN :userIds OR t.taskAssignedMember IN :userIds OR t.taskAssignedTo IN :userIds OR t.taskAssignedTeam IN :teamIds) ORDER BY t.taskId DESC")
     List<Task> findByTeamLeadCriteria(@org.springframework.data.repository.query.Param("userIds") List<Long> userIds, @org.springframework.data.repository.query.Param("teamIds") List<Long> teamIds);
+
+    @org.springframework.data.jpa.repository.Query("SELECT DISTINCT t FROM Task t WHERE " +
+           "(t.userIdFk = :userId OR " +
+           "t.taskAssignedMember = :userId OR " +
+           "t.taskAssignedTo = :userId OR " +
+           "(:teamMemberId IS NOT NULL AND (t.taskAssignedMember = :teamMemberId OR t.taskAssignedTo = :teamMemberId)) OR " +
+           "(:userEmail IS NOT NULL AND LOWER(t.taskCreatedBy) = LOWER(:userEmail))) " +
+           "ORDER BY t.taskId DESC")
+    List<Task> findByOwnDataCriteria(
+        @org.springframework.data.repository.query.Param("userId") Long userId,
+        @org.springframework.data.repository.query.Param("teamMemberId") Long teamMemberId,
+        @org.springframework.data.repository.query.Param("userEmail") String userEmail
+    );
     List<Task> findByTaskRelatedTo(String taskRelatedTo);
     List<Task> findByUserIdFkAndTaskDueDate(Long userIdFk, String dueDate);
     List<Task> findByUserIdFkAndTaskDueDateStartingWith(Long userIdFk, String dueDatePrefix);

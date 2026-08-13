@@ -64,7 +64,7 @@ public class TeamMemberService {
                 // OWN_DATA_ONLY
                 if (user != null && user.getUserEmail() != null) {
                     members = teamMemberRepository.findByTeamMemberEmail(user.getUserEmail())
-                            .map(List::of)
+                            .map(tm -> new java.util.ArrayList<>(List.of(tm)))
                             .orElseGet(java.util.ArrayList::new);
                 } else {
                     members = new java.util.ArrayList<>();

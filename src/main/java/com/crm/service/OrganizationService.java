@@ -42,7 +42,9 @@ public class OrganizationService {
         if (authUtil.isSuperAdmin(role)) {
             return organizationRepository.findAll();
         }
-        return organizationRepository.findByUserIdFk(userId);
+        User user = userRepository.findById(userId).orElse(null);
+        Long companyId = authUtil.getCompanyAdminId(user);
+        return organizationRepository.findByUserIdFk(companyId != null ? companyId : userId);
     }
 
     public Organization getById(Long id) {

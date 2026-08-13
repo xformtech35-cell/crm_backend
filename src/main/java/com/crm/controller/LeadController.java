@@ -2,11 +2,13 @@ package com.crm.controller;
 
 import com.crm.repository.LeadGroupRepository;
 import com.crm.repository.LeadSourceRepository;
+import com.crm.repository.LeadStatusRepository;
 import com.crm.dto.request.ImportLeadRequest;
 import com.crm.dto.request.LeadRequest;
 import com.crm.dto.response.ApiResponse;
 import com.crm.entity.LeadGroupsMaster;
 import com.crm.entity.LeadSourceMaster;
+import com.crm.entity.LeadStatusMaster;
 import com.crm.entity.Lead;
 import com.crm.entity.LeadNote;
 import com.crm.entity.LeadReminder;
@@ -44,6 +46,7 @@ public class LeadController {
     private final AuthUtil authUtil;
     private final LeadSourceRepository leadSourceRepository;
     private final LeadGroupRepository leadGroupRepository;
+    private final LeadStatusRepository leadStatusRepository;
 
     private final LeadRepository leadRepository;
     private final NegotiationRepository negotiationRepository;
@@ -422,6 +425,62 @@ public class LeadController {
         leadGroupRepository.save(group);
         return ResponseEntity.ok(ApiResponse.success("Lead group deleted", null));
     }
+
+    // ========== LEAD STATUS ENDPOINTS ==========
+    @GetMapping("/lead-status")
+    public ResponseEntity<ApiResponse<List<LeadStatusMaster>>> getAllLeadStatuses(Authentication auth) {
+        User user = authUtil.getCurrentUser(auth);
+        List<LeadStatusMaster> statuses;
+        if (authUtil.isSuperAdmin(user.getRole())) {
+            statuses = leadStatusRepository.findByActiveTrue();
+        } else {
+            Long companyAdminId = authUtil.getCompanyAdminId(user);
+            statuses = leadStatusRepository.findByActiveTrueAndUserIdFk(companyAdminId);
+        }
+        return ResponseEntity.ok(ApiResponse.success("Lead statuses fetched", statuses));
+    }
+
+    @GetMapping("/lead-status/{id}")
+    public ResponseEntity<ApiResponse<LeadStatusMaster>> getLeadStatusById(@PathVariable Long id) {
+        LeadStatusMaster status = leadStatusRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Lead status not found"));
+        return ResponseEntity.ok(ApiResponse.success("Lead status fetched", status));
+    }
+
+    @PostMapping("/lead-status")
+    public ResponseEntity<ApiResponse<LeadStatusMaster>> createLeadStatus(@Valid @RequestBody LeadStatusMaster status, Authentication auth) {
+        User user = authUtil.getCurrentUser(auth);
+        status.setId(null);
+        status.setActive(true);
+        if (!authUtil.isSuperAdmin(user.getRole())) {
+            Long companyAdminId = authUtil.getCompanyAdminId(user);
+            status.setUserIdFk(companyAdminId);
+        }
+        LeadStatusMaster saved = leadStatusRepository.save(status);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success("Lead status created", saved));
+    }
+
+    @PutMapping("/lead-status/{id}")
+    public ResponseEntity<ApiResponse<LeadStatusMaster>> updateLeadStatus(@PathVariable Long id,
+            @Valid @RequestBody LeadStatusMaster status) {
+        if (!leadStatusRepository.existsById(id)) {
+            throw new RuntimeException("Lead status not found with id: " + id);
+        }
+        status.setId(id);
+        LeadStatusMaster updated = leadStatusRepository.save(status);
+        return ResponseEntity.ok(ApiResponse.success("Lead status updated", updated));
+    }
+
+    @DeleteMapping("/lead-status/{id}")
+    public ResponseEntity<ApiResponse<Void>> deleteLeadStatus(@PathVariable Long id) {
+        LeadStatusMaster status = leadStatusRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Lead status not found"));
+        status.setActive(false);
+        leadStatusRepository.save(status);
+        return ResponseEntity.ok(ApiResponse.success("Lead status deleted", null));
+    }
+
     
 
     @PostMapping("/{leadId}/convert-to-negotiation")

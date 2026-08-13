@@ -21,7 +21,9 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 import com.crm.entity.Lead;
+import com.crm.entity.LeadStatusMaster;
 import com.crm.repository.LeadRepository;
+import com.crm.repository.LeadStatusRepository;
 import java.time.LocalDateTime;
 import java.math.BigDecimal;
 
@@ -34,6 +36,7 @@ public class DemoAuthBootstrap implements CommandLineRunner {
     private final PermissionRepository permissionRepository;
     private final PasswordEncoder passwordEncoder;
     private final LeadRepository leadRepository;
+    private final LeadStatusRepository leadStatusRepository;
     private final JdbcTemplate jdbcTemplate;
 
     private static final String DEMO_PASSWORD = "Admin@123";
@@ -50,6 +53,7 @@ public class DemoAuthBootstrap implements CommandLineRunner {
         ensurePermissions();
         ensureDemoUsers();
         ensureDemoLeads();
+        ensureLeadStatuses();
     }
 
     private void alterTablesForAutoIncrement() {
@@ -373,5 +377,18 @@ public class DemoAuthBootstrap implements CommandLineRunner {
                 .userIdFk(adminId)
                 .build();
         leadRepository.save(lead6);
+    }
+
+    private void ensureLeadStatuses() {
+        if (leadStatusRepository.count() > 0) return;
+        List<String> defaultStatuses = List.of("Open", "Negotiation", "Won", "Closed", "Qualified", "Disqualified");
+        for (String s : defaultStatuses) {
+            LeadStatusMaster st = new LeadStatusMaster();
+            st.setStatusName(s);
+            st.setDescription("Default system lead status");
+            st.setActive(true);
+            leadStatusRepository.save(st);
+        }
+        System.out.println("Seeded default LeadStatusMaster records successfully.");
     }
 }

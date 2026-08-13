@@ -118,10 +118,8 @@ public class NegotiationController {
         List<Lead> leads;
         if (user != null && ("SUPER_ADMIN".equalsIgnoreCase(user.getRole()) || "SUPER ADMIN".equalsIgnoreCase(user.getRole()))) {
             leads = leadRepository.findAll();
-        } else if (companyUserIds.size() > 1) {
-            leads = leadRepository.findByUserIdFkInOrLeadAssignedMemberIn(companyUserIds);
         } else {
-            leads = leadRepository.findByUserIdFkOrLeadAssignedMember(userId);
+            leads = leadService.getAllLeads(user.getUserid(), user.getRole());
         }
 
         for (Lead l : leads) {
@@ -134,10 +132,8 @@ public class NegotiationController {
         List<Negotiation> negotiations;
         if (user != null && ("SUPER_ADMIN".equalsIgnoreCase(user.getRole()) || "SUPER ADMIN".equalsIgnoreCase(user.getRole()))) {
             negotiations = negotiationRepository.findAll();
-        } else if (companyUserIds.size() > 1) {
-            negotiations = negotiationRepository.findByUserIdFkIn(companyUserIds);
         } else {
-            negotiations = negotiationRepository.findByUserIdFk(userId);
+            negotiations = negotiationRepository.findByUserIdFkIn(companyUserIds);
         }
 
         List<Map<String, Object>> responseList = new ArrayList<>();

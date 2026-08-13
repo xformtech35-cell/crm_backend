@@ -198,7 +198,12 @@ public class LeadService {
             leads = leadRepository.findByTeamLeadCriteria(teamUserIds, teamIds, memberEmails);
         } else {
             // OWN_DATA_ONLY
-            leads = leadRepository.findByUserIdFkOrLeadAssignedMember(userId);
+            Optional<TeamMember> tmOpt = teamMemberRepository.findByTeamMemberEmail(user != null ? user.getUserEmail() : "");
+            Long teamMemberId = tmOpt.map(TeamMember::getTeamMemberId).orElse(null);
+            String teamMemberName = tmOpt.map(TeamMember::getTeamMemberName).orElse(null);
+            String userEmail = user != null ? user.getUserEmail() : null;
+
+            leads = leadRepository.findByOwnDataCriteria(userId, teamMemberId, userEmail, teamMemberName);
         }
         populateCreatorInfoIfMissing(leads);
         return leads;
@@ -679,7 +684,13 @@ public class LeadService {
             List<Long> teamUserIds = authUtil.getTeamLeadMemberUserIds(user);
             leads = leadRepository.findByUserIdFkInAndLeadStatus(teamUserIds, status);
         } else {
-            leads = leadRepository.findByUserIdFkOrLeadAssignedMemberAndLeadStatus(userId, status);
+            User user = userRepository.findById(userId).orElse(null);
+            Optional<TeamMember> tmOpt = teamMemberRepository.findByTeamMemberEmail(user != null ? user.getUserEmail() : "");
+            Long teamMemberId = tmOpt.map(TeamMember::getTeamMemberId).orElse(null);
+            String teamMemberName = tmOpt.map(TeamMember::getTeamMemberName).orElse(null);
+            String userEmail = user != null ? user.getUserEmail() : null;
+
+            leads = leadRepository.findByOwnDataCriteriaAndStatus(userId, teamMemberId, userEmail, teamMemberName, status);
         }
         populateCreatorInfoIfMissing(leads);
         return leads;

@@ -25,14 +25,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
-        String token = resolveToken(request);
-        if (StringUtils.hasText(token) && tokenProvider.validateToken(token)) {
-            String email = tokenProvider.getUserEmailFromToken(token);
-            UserDetails userDetails = userDetailsService.loadUserByUsername(email);
-            UsernamePasswordAuthenticationToken auth =
-                    new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
-            auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-            SecurityContextHolder.getContext().setAuthentication(auth);
+        try {
+            String token = resolveToken(request);
+            if (StringUtils.hasText(token) && tokenProvider.validateToken(token)) {
+                String email = tokenProvider.getUserEmailFromToken(token);
+                UserDetails userDetails = userDetailsService.loadUserByUsername(email);
+                UsernamePasswordAuthenticationToken auth =
+                        new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
+                auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                SecurityContextHolder.getContext().setAuthentication(auth);
+            }
+        } catch (Exception e) {
+            logger.error("Could not set user authentication in security context", e);
         }
         filterChain.doFilter(request, response);
     }

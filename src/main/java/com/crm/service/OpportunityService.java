@@ -37,7 +37,9 @@ public class OpportunityService {
             if (teamUserIds.isEmpty()) teamUserIds = List.of(-1L);
             return opportunityRepository.findByUserIdFkIn(teamUserIds);
         }
-        return opportunityRepository.findByUserIdFk(userId);
+        // OWN_DATA_ONLY
+        List<Long> companyUserIds = leadService.getCompanyUserIds(userId, role);
+        return opportunityRepository.findByUserIdFkIn(companyUserIds);
     }
 
     public Opportunity getById(Long id) {
