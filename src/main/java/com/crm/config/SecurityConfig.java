@@ -73,6 +73,8 @@ public class SecurityConfig {
                         "/api/documents/**",
                         "/api/integrations",
                         "/api/integrations/**",
+                        "/api/superadmin/companies",
+                        "/api/superadmin/companies/**",
                         "/api/super-admin",
                         "/api/super-admin/**",
                         "/api/view/**",
