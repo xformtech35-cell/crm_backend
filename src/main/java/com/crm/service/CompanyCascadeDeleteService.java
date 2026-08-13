@@ -29,13 +29,9 @@ public class CompanyCascadeDeleteService {
     private EntityManager entityManager;
 
     /**
-     * Complete cascade deletion of a company, including:
-     * - Company Admin user login
-     * - All Team Lead & Team Member logins created under this company
-     * - All team member records & create_teams records
-     * - All custom roles & data scope configurations
-     * - All CRM module child data (Notes, Reminders, Revisions, Time Logs, Documents, Calendar Events/Notifications/Attendees, Trash, Audit Logs)
-     * - All CRM core module data (Leads, Contacts, Opportunities, Organizations, Projects, Tasks, Negotiations, Attendance, Master Data)
+     * Complete cascade deletion of a company:
+     * Checks INFORMATION_SCHEMA for table existence before deleting to ensure zero SQL syntax errors 
+     * and prevent Spring Transaction rollback-only exceptions.
      */
     @Transactional
     public void deleteCompanyAndAllAssociatedData(Long companyAdminId) {
@@ -66,61 +62,163 @@ public class CompanyCascadeDeleteService {
             return;
         }
 
-        // 3. Execute cascading deletes in strict child-to-parent order using exact JPA table names
+        // 3. Execute cascading deletes in child-to-parent order with INFORMATION_SCHEMA checks
 
         // A. Child Detail Tables (Revisions, Notes, Reminders, Scores, Time Logs, Documents)
-        executeDelete("DELETE FROM crm_negotiation_revision WHERE negotiation_id_fk IN (SELECT id FROM crm_negotiation WHERE user_id_fk IN (:uids))", "uids", uidsList);
-        executeDelete("DELETE FROM crm_lead_note WHERE lead_id_fk IN (SELECT lead_id FROM crm_xformsales_lead WHERE user_id_fk IN (:uids)) OR user_id_fk IN (:uids)", "uids", uidsList);
-        executeDelete("DELETE FROM crm_lead_reminder WHERE lead_id_fk IN (SELECT lead_id FROM crm_xformsales_lead WHERE user_id_fk IN (:uids)) OR user_id_fk IN (:uids)", "uids", uidsList);
-        executeDelete("DELETE FROM crm_lead_score WHERE lead_id_fk IN (SELECT lead_id FROM crm_xformsales_lead WHERE user_id_fk IN (:uids)) OR user_id_fk IN (:uids)", "uids", uidsList);
-        executeDelete("DELETE FROM crm_task_time_log WHERE task_id IN (SELECT task_id FROM crm_xformsales_task WHERE user_id_fk IN (:uids)) OR user_id IN (:uids)", "uids", uidsList);
-        executeDelete("DELETE FROM crm_documents WHERE user_id_fk IN (:uids)", "uids", uidsList);
+        executeDeleteIfTableExists("crm_negotiation_revision",
+                "DELETE FROM crm_negotiation_revision WHERE negotiation_id_fk IN (SELECT id FROM crm_negotiation WHERE user_id_fk IN (:uids))",
+                "uids", uidsList);
+
+        executeDeleteIfTableExists("crm_lead_note",
+                "DELETE FROM crm_lead_note WHERE lead_id_fk IN (SELECT lead_id FROM crm_xformsales_lead WHERE user_id_fk IN (:uids)) OR user_id_fk IN (:uids)",
+                "uids", uidsList);
+
+        executeDeleteIfTableExists("crm_lead_reminder",
+                "DELETE FROM crm_lead_reminder WHERE lead_id_fk IN (SELECT lead_id FROM crm_xformsales_lead WHERE user_id_fk IN (:uids)) OR user_id_fk IN (:uids)",
+                "uids", uidsList);
+
+        executeDeleteIfTableExists("crm_lead_score",
+                "DELETE FROM crm_lead_score WHERE lead_id_fk IN (SELECT lead_id FROM crm_xformsales_lead WHERE user_id_fk IN (:uids)) OR user_id_fk IN (:uids)",
+                "uids", uidsList);
+
+        executeDeleteIfTableExists("crm_task_time_log",
+                "DELETE FROM crm_task_time_log WHERE task_id IN (SELECT task_id FROM crm_xformsales_task WHERE user_id_fk IN (:uids)) OR user_id IN (:uids)",
+                "uids", uidsList);
+
+        executeDeleteIfTableExists("crm_documents",
+                "DELETE FROM crm_documents WHERE user_id_fk IN (:uids)",
+                "uids", uidsList);
 
         // B. Calendar Sub-System
-        executeDelete("DELETE FROM crm_calendar_notification WHERE user_id_fk IN (:uids) OR event_id_fk IN (SELECT id FROM crm_calendar_event WHERE user_id_fk IN (:uids))", "uids", uidsList);
-        executeDelete("DELETE FROM crm_calendar_attendee WHERE user_id_fk IN (:uids) OR event_id_fk IN (SELECT id FROM crm_calendar_event WHERE user_id_fk IN (:uids))", "uids", uidsList);
-        executeDelete("DELETE FROM crm_calendar_event WHERE user_id_fk IN (:uids)", "uids", uidsList);
+        executeDeleteIfTableExists("crm_calendar_notification",
+                "DELETE FROM crm_calendar_notification WHERE user_id_fk IN (:uids) OR event_id_fk IN (SELECT id FROM crm_calendar_event WHERE user_id_fk IN (:uids))",
+                "uids", uidsList);
+
+        executeDeleteIfTableExists("crm_calendar_attendee",
+                "DELETE FROM crm_calendar_attendee WHERE user_id_fk IN (:uids) OR event_id_fk IN (SELECT id FROM crm_calendar_event WHERE user_id_fk IN (:uids))",
+                "uids", uidsList);
+
+        executeDeleteIfTableExists("crm_calendar_event",
+                "DELETE FROM crm_calendar_event WHERE user_id_fk IN (:uids)",
+                "uids", uidsList);
 
         // C. Audit & Trash
-        executeDelete("DELETE FROM crm_audit_log WHERE user_id_fk IN (:uids)", "uids", uidsList);
-        executeDelete("DELETE FROM crm_trash WHERE user_id_fk IN (:uids) OR company_admin_id_fk = :cid", "cid", companyAdminId, "uids", uidsList);
+        executeDeleteIfTableExists("crm_audit_log",
+                "DELETE FROM crm_audit_log WHERE user_id_fk IN (:uids)",
+                "uids", uidsList);
+
+        executeDeleteIfTableExists("crm_trash",
+                "DELETE FROM crm_trash WHERE user_id_fk IN (:uids) OR company_admin_id_fk = :cid",
+                "cid", companyAdminId, "uids", uidsList);
 
         // D. Governance, Permissions & Teams
-        executeDelete("DELETE FROM crm_data_scope_config WHERE company_admin_id_fk = :cid OR user_id_fk IN (:uids)", "cid", companyAdminId, "uids", uidsList);
-        executeDelete("DELETE FROM crm_user_permission WHERE user_id_fk IN (:uids)", "uids", uidsList);
+        executeDeleteIfTableExists("crm_data_scope_config",
+                "DELETE FROM crm_data_scope_config WHERE company_admin_id_fk = :cid OR user_id_fk IN (:uids)",
+                "cid", companyAdminId, "uids", uidsList);
 
-        executeDelete("DELETE FROM crm_xformsales_team_member WHERE user_id_fk = :cid", "cid", companyAdminId);
+        executeDeleteIfTableExists("crm_user_permission",
+                "DELETE FROM crm_user_permission WHERE user_id_fk IN (:uids)",
+                "uids", uidsList);
+
+        executeDeleteIfTableExists("crm_xformsales_team_member",
+                "DELETE FROM crm_xformsales_team_member WHERE user_id_fk = :cid",
+                "cid", companyAdminId);
+
         if (!memberEmails.isEmpty()) {
-            executeDelete("DELETE FROM crm_xformsales_team_member WHERE team_member_email IN (:emails)", "emails", memberEmails);
+            executeDeleteIfTableExists("crm_xformsales_team_member",
+                    "DELETE FROM crm_xformsales_team_member WHERE team_member_email IN (:emails)",
+                    "emails", memberEmails);
         }
 
-        executeDelete("DELETE FROM crm_xformsales_create_team WHERE user_id_fk = :cid", "cid", companyAdminId);
-        executeDelete("DELETE FROM crm_xformsales_team WHERE user_id_fk = :cid", "cid", companyAdminId);
-        executeDelete("DELETE FROM crm_xformsales_role WHERE user_id_fk = :cid", "cid", companyAdminId);
+        executeDeleteIfTableExists("crm_xformsales_create_team",
+                "DELETE FROM crm_xformsales_create_team WHERE user_id_fk = :cid",
+                "cid", companyAdminId);
+
+        executeDeleteIfTableExists("crm_xformsales_team",
+                "DELETE FROM crm_xformsales_team WHERE user_id_fk = :cid",
+                "cid", companyAdminId);
+
+        executeDeleteIfTableExists("crm_xformsales_role",
+                "DELETE FROM crm_xformsales_role WHERE user_id_fk = :cid",
+                "cid", companyAdminId);
 
         // E. Primary Module Entities
-        executeDelete("DELETE FROM crm_negotiation WHERE user_id_fk IN (:uids)", "uids", uidsList);
-        executeDelete("DELETE FROM crm_xformsales_lead WHERE user_id_fk IN (:uids)", "uids", uidsList);
-        executeDelete("DELETE FROM crm_xformsales_contact WHERE user_id_fk IN (:uids)", "uids", uidsList);
-        executeDelete("DELETE FROM crm_xformsales_opportunity WHERE user_id_fk IN (:uids)", "uids", uidsList);
-        executeDelete("DELETE FROM crm_xformsales_organization WHERE user_id_fk IN (:uids)", "uids", uidsList);
-        executeDelete("DELETE FROM crm_xformsales_project WHERE user_id_fk IN (:uids)", "uids", uidsList);
-        executeDelete("DELETE FROM crm_xformsales_task WHERE user_id_fk IN (:uids)", "uids", uidsList);
-        executeDelete("DELETE FROM crm_attendance WHERE user_id IN (:uids)", "uids", uidsList);
-        executeDelete("DELETE FROM crm_integration_config WHERE user_id_fk IN (:uids)", "uids", uidsList);
+        executeDeleteIfTableExists("crm_negotiation",
+                "DELETE FROM crm_negotiation WHERE user_id_fk IN (:uids)",
+                "uids", uidsList);
+
+        executeDeleteIfTableExists("crm_xformsales_lead",
+                "DELETE FROM crm_xformsales_lead WHERE user_id_fk IN (:uids)",
+                "uids", uidsList);
+
+        executeDeleteIfTableExists("crm_xformsales_contact",
+                "DELETE FROM crm_xformsales_contact WHERE user_id_fk IN (:uids)",
+                "uids", uidsList);
+
+        executeDeleteIfTableExists("crm_xformsales_opportunity",
+                "DELETE FROM crm_xformsales_opportunity WHERE user_id_fk IN (:uids)",
+                "uids", uidsList);
+
+        executeDeleteIfTableExists("crm_xformsales_organization",
+                "DELETE FROM crm_xformsales_organization WHERE user_id_fk IN (:uids)",
+                "uids", uidsList);
+
+        executeDeleteIfTableExists("crm_xformsales_project",
+                "DELETE FROM crm_xformsales_project WHERE user_id_fk IN (:uids)",
+                "uids", uidsList);
+
+        executeDeleteIfTableExists("crm_xformsales_task",
+                "DELETE FROM crm_xformsales_task WHERE user_id_fk IN (:uids)",
+                "uids", uidsList);
+
+        executeDeleteIfTableExists("crm_attendance",
+                "DELETE FROM crm_attendance WHERE user_id IN (:uids)",
+                "uids", uidsList);
+
+        executeDeleteIfTableExists("crm_integration_config",
+                "DELETE FROM crm_integration_config WHERE user_id_fk IN (:uids)",
+                "uids", uidsList);
 
         // F. Master Data
-        executeDelete("DELETE FROM crm_leadstatus_master WHERE user_id_fk IN (:uids)", "uids", uidsList);
-        executeDelete("DELETE FROM crm_leadgroup_master WHERE user_id_fk IN (:uids)", "uids", uidsList);
-        executeDelete("DELETE FROM crm_leadsource_master WHERE user_id_fk IN (:uids)", "uids", uidsList);
+        executeDeleteIfTableExists("crm_leadstatus_master",
+                "DELETE FROM crm_leadstatus_master WHERE user_id_fk IN (:uids)",
+                "uids", uidsList);
+
+        executeDeleteIfTableExists("crm_leadgroup_master",
+                "DELETE FROM crm_leadgroup_master WHERE user_id_fk IN (:uids)",
+                "uids", uidsList);
+
+        executeDeleteIfTableExists("crm_leadsource_master",
+                "DELETE FROM crm_leadsource_master WHERE user_id_fk IN (:uids)",
+                "uids", uidsList);
 
         // G. User Login Accounts (Company Admin + Team Leads + Team Members)
-        executeDelete("DELETE FROM crm_xformsales_user WHERE userid IN (:uids)", "uids", uidsList);
+        executeDeleteIfTableExists("crm_xformsales_user",
+                "DELETE FROM crm_xformsales_user WHERE userid IN (:uids)",
+                "uids", uidsList);
 
         log.info("Successfully deleted company ID {} and all associated logins and records.", companyAdminId);
     }
 
-    private void executeDelete(String sql, Object... params) {
+    private boolean tableExists(String tableName) {
+        try {
+            Number count = (Number) entityManager.createNativeQuery(
+                    "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = :tname")
+                    .setParameter("tname", tableName)
+                    .getSingleResult();
+            return count != null && count.longValue() > 0;
+        } catch (Exception e) {
+            log.warn("Table existence check failed for table [{}]: {}", tableName, e.getMessage());
+            return false;
+        }
+    }
+
+    private void executeDeleteIfTableExists(String tableName, String sql, Object... params) {
+        if (!tableExists(tableName)) {
+            log.info("Skipping cascade delete for non-existent table [{}]", tableName);
+            return;
+        }
+
         try {
             var query = entityManager.createNativeQuery(sql);
             for (int i = 0; i < params.length; i += 2) {
@@ -130,7 +228,7 @@ public class CompanyCascadeDeleteService {
             }
             query.executeUpdate();
         } catch (Exception e) {
-            log.warn("Cascade delete notice for query [{}]: {}", sql, e.getMessage());
+            log.warn("Cascade delete warning for table [{}] query [{}]: {}", tableName, sql, e.getMessage());
         }
     }
 }
