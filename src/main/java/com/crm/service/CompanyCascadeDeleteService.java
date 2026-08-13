@@ -66,15 +66,15 @@ public class CompanyCascadeDeleteService {
             return;
         }
 
-        // 3. Execute cascading deletes in strict child-to-parent order to avoid Foreign Key constraint violations
+        // 3. Execute cascading deletes in strict child-to-parent order using exact JPA table names
 
         // A. Child Detail Tables (Revisions, Notes, Reminders, Scores, Time Logs, Documents)
-        executeDelete("DELETE FROM crm_negotiation_revision WHERE negotiation_id_fk IN (SELECT id FROM crm_xformsales_negotiation WHERE user_id_fk IN (:uids))", "uids", uidsList);
+        executeDelete("DELETE FROM crm_negotiation_revision WHERE negotiation_id_fk IN (SELECT id FROM crm_negotiation WHERE user_id_fk IN (:uids))", "uids", uidsList);
         executeDelete("DELETE FROM crm_lead_note WHERE lead_id_fk IN (SELECT lead_id FROM crm_xformsales_lead WHERE user_id_fk IN (:uids)) OR user_id_fk IN (:uids)", "uids", uidsList);
         executeDelete("DELETE FROM crm_lead_reminder WHERE lead_id_fk IN (SELECT lead_id FROM crm_xformsales_lead WHERE user_id_fk IN (:uids)) OR user_id_fk IN (:uids)", "uids", uidsList);
         executeDelete("DELETE FROM crm_lead_score WHERE lead_id_fk IN (SELECT lead_id FROM crm_xformsales_lead WHERE user_id_fk IN (:uids)) OR user_id_fk IN (:uids)", "uids", uidsList);
-        executeDelete("DELETE FROM crm_task_time_log WHERE task_id_fk IN (SELECT id FROM crm_xformsales_task WHERE user_id_fk IN (:uids)) OR user_id_fk IN (:uids)", "uids", uidsList);
-        executeDelete("DELETE FROM crm_xformsales_document WHERE user_id_fk IN (:uids)", "uids", uidsList);
+        executeDelete("DELETE FROM crm_task_time_log WHERE task_id IN (SELECT task_id FROM crm_xformsales_task WHERE user_id_fk IN (:uids)) OR user_id IN (:uids)", "uids", uidsList);
+        executeDelete("DELETE FROM crm_documents WHERE user_id_fk IN (:uids)", "uids", uidsList);
 
         // B. Calendar Sub-System
         executeDelete("DELETE FROM crm_calendar_notification WHERE user_id_fk IN (:uids) OR event_id_fk IN (SELECT id FROM crm_calendar_event WHERE user_id_fk IN (:uids))", "uids", uidsList);
@@ -99,14 +99,14 @@ public class CompanyCascadeDeleteService {
         executeDelete("DELETE FROM crm_xformsales_role WHERE user_id_fk = :cid", "cid", companyAdminId);
 
         // E. Primary Module Entities
-        executeDelete("DELETE FROM crm_xformsales_negotiation WHERE user_id_fk IN (:uids)", "uids", uidsList);
+        executeDelete("DELETE FROM crm_negotiation WHERE user_id_fk IN (:uids)", "uids", uidsList);
         executeDelete("DELETE FROM crm_xformsales_lead WHERE user_id_fk IN (:uids)", "uids", uidsList);
         executeDelete("DELETE FROM crm_xformsales_contact WHERE user_id_fk IN (:uids)", "uids", uidsList);
         executeDelete("DELETE FROM crm_xformsales_opportunity WHERE user_id_fk IN (:uids)", "uids", uidsList);
         executeDelete("DELETE FROM crm_xformsales_organization WHERE user_id_fk IN (:uids)", "uids", uidsList);
         executeDelete("DELETE FROM crm_xformsales_project WHERE user_id_fk IN (:uids)", "uids", uidsList);
         executeDelete("DELETE FROM crm_xformsales_task WHERE user_id_fk IN (:uids)", "uids", uidsList);
-        executeDelete("DELETE FROM crm_xformsales_attendance WHERE user_id_fk IN (:uids)", "uids", uidsList);
+        executeDelete("DELETE FROM crm_attendance WHERE user_id IN (:uids)", "uids", uidsList);
         executeDelete("DELETE FROM crm_integration_config WHERE user_id_fk IN (:uids)", "uids", uidsList);
 
         // F. Master Data
