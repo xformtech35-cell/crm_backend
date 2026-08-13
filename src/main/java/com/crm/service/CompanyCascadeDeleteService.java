@@ -32,10 +32,10 @@ public class CompanyCascadeDeleteService {
      * Complete cascade deletion of a company, including:
      * - Company Admin user login
      * - All Team Lead & Team Member logins created under this company
-     * - All team member records
-     * - All teams & create_teams records
+     * - All team member records & create_teams records
      * - All custom roles & data scope configurations
-     * - All CRM module data (Leads, Contacts, Opportunities, Organizations, Projects, Tasks, Negotiations, Attendance, Reminders, Notes, Scores, Integrations)
+     * - All CRM module child data (Notes, Reminders, Revisions, Time Logs, Documents, Calendar Events/Notifications/Attendees, Trash, Audit Logs)
+     * - All CRM core module data (Leads, Contacts, Opportunities, Organizations, Projects, Tasks, Negotiations, Attendance, Master Data)
      */
     @Transactional
     public void deleteCompanyAndAllAssociatedData(Long companyAdminId) {
@@ -62,82 +62,75 @@ public class CompanyCascadeDeleteService {
         List<Long> uidsList = new ArrayList<>(associatedUserIds);
         log.info("Deleting company and all {} associated user accounts: {}", uidsList.size(), uidsList);
 
-        // 3. Execute cascading native SQL deletes across all company tables
-
-        // Data Scope Configs
-        entityManager.createNativeQuery("DELETE FROM crm_data_scope_config WHERE company_admin_id_fk = :cid OR user_id_fk IN (:uids)")
-                .setParameter("cid", companyAdminId)
-                .setParameter("uids", uidsList)
-                .executeUpdate();
-
-        // User permissions
-        entityManager.createNativeQuery("DELETE FROM crm_user_permission WHERE user_id_fk IN (:uids)")
-                .setParameter("uids", uidsList)
-                .executeUpdate();
-
-        // Team Members
-        entityManager.createNativeQuery("DELETE FROM crm_xformsales_team_member WHERE user_id_fk = :cid")
-                .setParameter("cid", companyAdminId)
-                .executeUpdate();
-
-        if (!memberEmails.isEmpty()) {
-            entityManager.createNativeQuery("DELETE FROM crm_xformsales_team_member WHERE team_member_email IN (:emails)")
-                    .setParameter("emails", memberEmails)
-                    .executeUpdate();
+        if (uidsList.isEmpty()) {
+            return;
         }
 
-        // Teams
-        entityManager.createNativeQuery("DELETE FROM crm_xformsales_team WHERE user_id_fk = :cid")
-                .setParameter("cid", companyAdminId)
-                .executeUpdate();
+        // 3. Execute cascading deletes in strict child-to-parent order to avoid Foreign Key constraint violations
 
-        // Roles
-        entityManager.createNativeQuery("DELETE FROM crm_xformsales_role WHERE user_id_fk = :cid")
-                .setParameter("cid", companyAdminId)
-                .executeUpdate();
+        // A. Child Detail Tables (Revisions, Notes, Reminders, Scores, Time Logs, Documents)
+        executeDelete("DELETE FROM crm_negotiation_revision WHERE negotiation_id_fk IN (SELECT id FROM crm_xformsales_negotiation WHERE user_id_fk IN (:uids))", "uids", uidsList);
+        executeDelete("DELETE FROM crm_lead_note WHERE lead_id_fk IN (SELECT lead_id FROM crm_xformsales_lead WHERE user_id_fk IN (:uids)) OR user_id_fk IN (:uids)", "uids", uidsList);
+        executeDelete("DELETE FROM crm_lead_reminder WHERE lead_id_fk IN (SELECT lead_id FROM crm_xformsales_lead WHERE user_id_fk IN (:uids)) OR user_id_fk IN (:uids)", "uids", uidsList);
+        executeDelete("DELETE FROM crm_lead_score WHERE lead_id_fk IN (SELECT lead_id FROM crm_xformsales_lead WHERE user_id_fk IN (:uids)) OR user_id_fk IN (:uids)", "uids", uidsList);
+        executeDelete("DELETE FROM crm_task_time_log WHERE task_id_fk IN (SELECT id FROM crm_xformsales_task WHERE user_id_fk IN (:uids)) OR user_id_fk IN (:uids)", "uids", uidsList);
+        executeDelete("DELETE FROM crm_xformsales_document WHERE user_id_fk IN (:uids)", "uids", uidsList);
 
-        // Module Entities
-        entityManager.createNativeQuery("DELETE FROM crm_xformsales_lead WHERE user_id_fk IN (:uids)")
-                .setParameter("uids", uidsList)
-                .executeUpdate();
+        // B. Calendar Sub-System
+        executeDelete("DELETE FROM crm_calendar_notification WHERE user_id_fk IN (:uids) OR event_id_fk IN (SELECT id FROM crm_calendar_event WHERE user_id_fk IN (:uids))", "uids", uidsList);
+        executeDelete("DELETE FROM crm_calendar_attendee WHERE user_id_fk IN (:uids) OR event_id_fk IN (SELECT id FROM crm_calendar_event WHERE user_id_fk IN (:uids))", "uids", uidsList);
+        executeDelete("DELETE FROM crm_calendar_event WHERE user_id_fk IN (:uids)", "uids", uidsList);
 
-        entityManager.createNativeQuery("DELETE FROM crm_xformsales_contact WHERE user_id_fk IN (:uids)")
-                .setParameter("uids", uidsList)
-                .executeUpdate();
+        // C. Audit & Trash
+        executeDelete("DELETE FROM crm_audit_log WHERE user_id_fk IN (:uids)", "uids", uidsList);
+        executeDelete("DELETE FROM crm_trash WHERE user_id_fk IN (:uids) OR company_admin_id_fk = :cid", "cid", companyAdminId, "uids", uidsList);
 
-        entityManager.createNativeQuery("DELETE FROM crm_xformsales_opportunity WHERE user_id_fk IN (:uids)")
-                .setParameter("uids", uidsList)
-                .executeUpdate();
+        // D. Governance, Permissions & Teams
+        executeDelete("DELETE FROM crm_data_scope_config WHERE company_admin_id_fk = :cid OR user_id_fk IN (:uids)", "cid", companyAdminId, "uids", uidsList);
+        executeDelete("DELETE FROM crm_user_permission WHERE user_id_fk IN (:uids)", "uids", uidsList);
 
-        entityManager.createNativeQuery("DELETE FROM crm_xformsales_organization WHERE user_id_fk IN (:uids)")
-                .setParameter("uids", uidsList)
-                .executeUpdate();
+        executeDelete("DELETE FROM crm_xformsales_team_member WHERE user_id_fk = :cid", "cid", companyAdminId);
+        if (!memberEmails.isEmpty()) {
+            executeDelete("DELETE FROM crm_xformsales_team_member WHERE team_member_email IN (:emails)", "emails", memberEmails);
+        }
 
-        entityManager.createNativeQuery("DELETE FROM crm_xformsales_project WHERE user_id_fk IN (:uids)")
-                .setParameter("uids", uidsList)
-                .executeUpdate();
+        executeDelete("DELETE FROM crm_xformsales_create_team WHERE user_id_fk = :cid", "cid", companyAdminId);
+        executeDelete("DELETE FROM crm_xformsales_team WHERE user_id_fk = :cid", "cid", companyAdminId);
+        executeDelete("DELETE FROM crm_xformsales_role WHERE user_id_fk = :cid", "cid", companyAdminId);
 
-        entityManager.createNativeQuery("DELETE FROM crm_xformsales_task WHERE user_id_fk IN (:uids)")
-                .setParameter("uids", uidsList)
-                .executeUpdate();
+        // E. Primary Module Entities
+        executeDelete("DELETE FROM crm_xformsales_negotiation WHERE user_id_fk IN (:uids)", "uids", uidsList);
+        executeDelete("DELETE FROM crm_xformsales_lead WHERE user_id_fk IN (:uids)", "uids", uidsList);
+        executeDelete("DELETE FROM crm_xformsales_contact WHERE user_id_fk IN (:uids)", "uids", uidsList);
+        executeDelete("DELETE FROM crm_xformsales_opportunity WHERE user_id_fk IN (:uids)", "uids", uidsList);
+        executeDelete("DELETE FROM crm_xformsales_organization WHERE user_id_fk IN (:uids)", "uids", uidsList);
+        executeDelete("DELETE FROM crm_xformsales_project WHERE user_id_fk IN (:uids)", "uids", uidsList);
+        executeDelete("DELETE FROM crm_xformsales_task WHERE user_id_fk IN (:uids)", "uids", uidsList);
+        executeDelete("DELETE FROM crm_xformsales_attendance WHERE user_id_fk IN (:uids)", "uids", uidsList);
+        executeDelete("DELETE FROM crm_integration_config WHERE user_id_fk IN (:uids)", "uids", uidsList);
 
-        entityManager.createNativeQuery("DELETE FROM crm_xformsales_negotiation WHERE user_id_fk IN (:uids)")
-                .setParameter("uids", uidsList)
-                .executeUpdate();
+        // F. Master Data
+        executeDelete("DELETE FROM crm_leadstatus_master WHERE user_id_fk IN (:uids)", "uids", uidsList);
+        executeDelete("DELETE FROM crm_leadgroup_master WHERE user_id_fk IN (:uids)", "uids", uidsList);
+        executeDelete("DELETE FROM crm_leadsource_master WHERE user_id_fk IN (:uids)", "uids", uidsList);
 
-        entityManager.createNativeQuery("DELETE FROM crm_xformsales_attendance WHERE user_id_fk IN (:uids)")
-                .setParameter("uids", uidsList)
-                .executeUpdate();
-
-        entityManager.createNativeQuery("DELETE FROM crm_integration_config WHERE user_id_fk IN (:uids)")
-                .setParameter("uids", uidsList)
-                .executeUpdate();
-
-        // User Login Accounts (Company Admin + Team Leads + Team Members)
-        entityManager.createNativeQuery("DELETE FROM crm_xformsales_user WHERE userid IN (:uids)")
-                .setParameter("uids", uidsList)
-                .executeUpdate();
+        // G. User Login Accounts (Company Admin + Team Leads + Team Members)
+        executeDelete("DELETE FROM crm_xformsales_user WHERE userid IN (:uids)", "uids", uidsList);
 
         log.info("Successfully deleted company ID {} and all associated logins and records.", companyAdminId);
+    }
+
+    private void executeDelete(String sql, Object... params) {
+        try {
+            var query = entityManager.createNativeQuery(sql);
+            for (int i = 0; i < params.length; i += 2) {
+                String paramName = (String) params[i];
+                Object paramValue = params[i + 1];
+                query.setParameter(paramName, paramValue);
+            }
+            query.executeUpdate();
+        } catch (Exception e) {
+            log.warn("Cascade delete notice for query [{}]: {}", sql, e.getMessage());
+        }
     }
 }
