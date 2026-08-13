@@ -255,11 +255,29 @@ public class AuthService {
                     .findFirst();
 
             if (companyAdminRole.isPresent()) {
-                return permissionRepository.findByRoleIdFk(companyAdminRole.get().getRoleId())
+                List<String> perms = permissionRepository.findByRoleIdFk(companyAdminRole.get().getRoleId())
                         .stream().map(Permission::getGrpPerm).collect(Collectors.toList());
+                if (!perms.isEmpty()) {
+                    return perms;
+                }
             }
 
-            return List.of();
+            return List.of(
+                "dashboard.view", "roles.view", "settings.view",
+                "leads.view", "leads.create", "leads.edit", "leads.delete", "leads.import",
+                "opportunities.view", "opportunities.create", "opportunities.edit", "opportunities.delete",
+                "projects.view", "projects.create", "projects.edit", "projects.delete",
+                "tasks.view", "tasks.create", "tasks.edit", "tasks.delete",
+                "contacts.view", "contacts.create", "contacts.edit", "contacts.delete",
+                "organizations.view", "organizations.create", "organizations.edit", "organizations.delete",
+                "teams.view", "teams.create", "teams.edit", "teams.delete",
+                "users.view", "users.create", "users.edit", "users.delete",
+                "reports.view", "calendar.view", "calendar.create", "calendar.edit", "calendar.delete",
+                "attendance.view", "attendance.edit", "integrations.view", "integrations.edit",
+                "companies.view", "companies.create", "companies.edit", "companies.delete", "audit.view",
+                "activities.view", "emails.view", "analytics.view", "automation.view",
+                "trash.view", "trash.restore", "trash.delete", "data_access.view", "data_access.edit"
+            );
         }
 
         // 3. Check TeamMember record for assigned teamMemberRole

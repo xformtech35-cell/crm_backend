@@ -321,11 +321,11 @@ public class LeadController {
     public ResponseEntity<ApiResponse<List<LeadSourceMaster>>> getAllLeadSources(Authentication auth) {
         User user = authUtil.getCurrentUser(auth);
         List<LeadSourceMaster> sources;
-        if (authUtil.isSuperAdmin(user.getRole())) {
-            sources = leadSourceRepository.findByActiveTrue();
+        Long companyAdminId = authUtil.getCompanyAdminId(user);
+        if (companyAdminId != null) {
+            sources = leadSourceRepository.findActiveByUserIdFkOrGlobal(companyAdminId);
         } else {
-            Long companyAdminId = authUtil.getCompanyAdminId(user);
-            sources = leadSourceRepository.findByActiveTrueAndUserIdFk(companyAdminId);
+            sources = leadSourceRepository.findByActiveTrue();
         }
         return ResponseEntity.ok(ApiResponse.success("Lead sources fetched", sources));
     }
@@ -376,11 +376,11 @@ public class LeadController {
     public ResponseEntity<ApiResponse<List<LeadGroupsMaster>>> getAllLeadGroups(Authentication auth) {
         User user = authUtil.getCurrentUser(auth);
         List<LeadGroupsMaster> groups;
-        if (authUtil.isSuperAdmin(user.getRole())) {
-            groups = leadGroupRepository.findByActiveTrue();
+        Long companyAdminId = authUtil.getCompanyAdminId(user);
+        if (companyAdminId != null) {
+            groups = leadGroupRepository.findActiveByUserIdFkOrGlobal(companyAdminId);
         } else {
-            Long companyAdminId = authUtil.getCompanyAdminId(user);
-            groups = leadGroupRepository.findByActiveTrueAndUserIdFk(companyAdminId);
+            groups = leadGroupRepository.findByActiveTrue();
         }
         return ResponseEntity.ok(ApiResponse.success("Lead groups fetched", groups));
     }
@@ -431,11 +431,11 @@ public class LeadController {
     public ResponseEntity<ApiResponse<List<LeadStatusMaster>>> getAllLeadStatuses(Authentication auth) {
         User user = authUtil.getCurrentUser(auth);
         List<LeadStatusMaster> statuses;
-        if (authUtil.isSuperAdmin(user.getRole())) {
-            statuses = leadStatusRepository.findByActiveTrue();
+        Long companyAdminId = authUtil.getCompanyAdminId(user);
+        if (companyAdminId != null) {
+            statuses = leadStatusRepository.findActiveByUserIdFkOrGlobal(companyAdminId);
         } else {
-            Long companyAdminId = authUtil.getCompanyAdminId(user);
-            statuses = leadStatusRepository.findByActiveTrueAndUserIdFk(companyAdminId);
+            statuses = leadStatusRepository.findByActiveTrue();
         }
         return ResponseEntity.ok(ApiResponse.success("Lead statuses fetched", statuses));
     }

@@ -41,12 +41,11 @@ public class AuthUtil {
 
         if (isSuperAdmin(user.getRole())) {
             String companyIdStr = request.getHeader("X-Company-Id");
-            String requestUri = request.getRequestURI();
-            if (companyIdStr != null && !companyIdStr.trim().isEmpty() && !requestUri.contains("/superadmin")) {
+            if (companyIdStr != null && !companyIdStr.trim().isEmpty()) {
                 try {
                     Long companyId = Long.parseLong(companyIdStr.trim());
                     return userRepository.findById(companyId)
-                            .orElseThrow(() -> new ResourceNotFoundException("Company Admin User", "id", companyId));
+                            .orElse(user);
                 } catch (Exception e) {
                     // Fallback to standard super admin user if parsing/finding fails
                 }
@@ -57,6 +56,12 @@ public class AuthUtil {
 
     public Long getCompanyAdminId(User user) {
         if (user == null) return null;
+        String companyIdStr = request.getHeader("X-Company-Id");
+        if (companyIdStr != null && !companyIdStr.trim().isEmpty()) {
+            try {
+                return Long.parseLong(companyIdStr.trim());
+            } catch (Exception ignored) {}
+        }
         if (isSuperAdmin(user.getRole())) {
             return null;
         }

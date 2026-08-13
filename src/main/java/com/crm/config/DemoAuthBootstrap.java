@@ -37,6 +37,8 @@ public class DemoAuthBootstrap implements CommandLineRunner {
     private final PasswordEncoder passwordEncoder;
     private final LeadRepository leadRepository;
     private final LeadStatusRepository leadStatusRepository;
+    private final com.crm.repository.LeadSourceRepository leadSourceRepository;
+    private final com.crm.repository.LeadGroupRepository leadGroupRepository;
     private final JdbcTemplate jdbcTemplate;
 
     private static final String DEMO_PASSWORD = "Admin@123";
@@ -54,6 +56,8 @@ public class DemoAuthBootstrap implements CommandLineRunner {
         ensureDemoUsers();
         ensureDemoLeads();
         ensureLeadStatuses();
+        ensureLeadSources();
+        ensureLeadGroups();
     }
 
     private void alterTablesForAutoIncrement() {
@@ -390,5 +394,29 @@ public class DemoAuthBootstrap implements CommandLineRunner {
             leadStatusRepository.save(st);
         }
         System.out.println("Seeded default LeadStatusMaster records successfully.");
+    }
+
+    private void ensureLeadSources() {
+        if (leadSourceRepository.count() > 0) return;
+        List<String> defaultSources = List.of("RRW", "Website", "IndiaMart", "TradeIndia", "Referral", "Cold Call", "Social Media", "Direct");
+        for (String src : defaultSources) {
+            com.crm.entity.LeadSourceMaster ls = new com.crm.entity.LeadSourceMaster();
+            ls.setSourceName(src);
+            ls.setActive(true);
+            leadSourceRepository.save(ls);
+        }
+        System.out.println("Seeded default LeadSourceMaster records successfully.");
+    }
+
+    private void ensureLeadGroups() {
+        if (leadGroupRepository.count() > 0) return;
+        List<String> defaultGroups = List.of("Dosing Trading", "Sandur", "Dosing System", "Agitator System", "STP & WTP");
+        for (String grp : defaultGroups) {
+            com.crm.entity.LeadGroupsMaster lg = new com.crm.entity.LeadGroupsMaster();
+            lg.setGroupName(grp);
+            lg.setActive(true);
+            leadGroupRepository.save(lg);
+        }
+        System.out.println("Seeded default LeadGroupsMaster records successfully.");
     }
 }
