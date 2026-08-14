@@ -39,6 +39,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/leads")
+@CrossOrigin(origins = "*", maxAge = 3600)
 @RequiredArgsConstructor
 public class LeadController {
 
