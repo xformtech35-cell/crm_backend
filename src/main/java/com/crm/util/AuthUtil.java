@@ -237,19 +237,6 @@ public class AuthUtil {
             emails.add(user.getUserEmail().trim().toLowerCase());
         }
 
-        // Include the company admin email associated with this user/team
-        Long companyAdminId = getCompanyAdminId(user);
-        if (companyAdminId != null) {
-            userRepository.findById(companyAdminId).ifPresent(adminUser -> {
-                if (adminUser.getUserEmail() != null && !adminUser.getUserEmail().isBlank()) {
-                    String adminEmail = adminUser.getUserEmail().trim().toLowerCase();
-                    if (!emails.contains(adminEmail)) {
-                        emails.add(adminEmail);
-                    }
-                }
-            });
-        }
-
         List<Team> ledTeams = getLedTeamsForUser(user);
         for (Team team : ledTeams) {
             if (team.getTeamLeadId() != null) {
