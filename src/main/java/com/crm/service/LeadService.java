@@ -73,6 +73,7 @@ public class LeadService {
     private final IntegrationConfigRepository integrationConfigRepository;
     private final UserRepository userRepository;
     private final TeamMemberRepository teamMemberRepository;
+    private final CreateTeamRepository createTeamRepository;
 
     private final NegotiationRevisionRepository negotiationRevisionRepository;
     private final NegotiationRepository negotiationRepository;
