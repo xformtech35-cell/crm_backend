@@ -183,6 +183,46 @@ public class LeadService {
         User user = userRepository.findById(userId).orElse(null);
         String scopeMode = authUtil.resolveDataScopeMode(user, "LEADS");
 
+        Long selectedTmId = authUtil.getSelectedTeamMemberId();
+        if (selectedTmId != null && !authUtil.isSuperAdmin(role)) {
+            Optional<TeamMember> tmOpt = teamMemberRepository.findById(selectedTmId);
+            if (!tmOpt.isPresent()) {
+                Optional<User> targetUser = userRepository.findById(selectedTmId);
+                if (targetUser.isPresent()) {
+                    tmOpt = teamMemberRepository.findByTeamMemberEmail(targetUser.get().getUserEmail());
+                }
+            }
+            if (tmOpt.isPresent()) {
+                TeamMember tm = tmOpt.get();
+                List<Long> targetUserIds = new ArrayList<>();
+                if (tm.getTeamMemberId() != null) targetUserIds.add(tm.getTeamMemberId());
+                if (userRepository.findByUserEmail(tm.getTeamMemberEmail()).isPresent()) {
+                    targetUserIds.add(userRepository.findByUserEmail(tm.getTeamMemberEmail()).get().getUserid());
+                }
+
+                List<Long> targetTeamIds = new ArrayList<>();
+                if (tm.getTeamIdFk() != null) targetTeamIds.add(tm.getTeamIdFk());
+                createTeamRepository.findByTeamMemberIdFk(tm.getTeamMemberId()).forEach(ct -> {
+                    if (ct.getTeamIdFk() != null && !targetTeamIds.contains(ct.getTeamIdFk())) {
+                        targetTeamIds.add(ct.getTeamIdFk());
+                    }
+                });
+
+                List<String> targetEmails = new ArrayList<>();
+                if (tm.getTeamMemberEmail() != null && !tm.getTeamMemberEmail().isBlank()) {
+                    targetEmails.add(tm.getTeamMemberEmail().toLowerCase());
+                }
+
+                if (targetUserIds.isEmpty()) targetUserIds = List.of(-1L);
+                if (targetTeamIds.isEmpty()) targetTeamIds = List.of(-1L);
+                if (targetEmails.isEmpty()) targetEmails = List.of("__NONE__");
+
+                leads = leadRepository.findByTeamLeadCriteria(targetUserIds, targetTeamIds, targetEmails);
+                populateCreatorInfoIfMissing(leads);
+                return leads;
+            }
+        }
+
         if (authUtil.isSuperAdmin(role)) {
             leads = leadRepository.findAll(Sort.by(Sort.Direction.DESC, "leadId"));
         } else if ("ALL_DATA".equals(scopeMode)) {
