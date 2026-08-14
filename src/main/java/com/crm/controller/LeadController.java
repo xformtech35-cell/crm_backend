@@ -346,10 +346,11 @@ public class LeadController {
         User user = authUtil.getCurrentUser(auth);
         source.setId(null);
         source.setActive(true);
-        if (!authUtil.isSuperAdmin(user.getRole())) {
-            Long companyAdminId = authUtil.getCompanyAdminId(user);
-            source.setUserIdFk(companyAdminId);
+        Long companyAdminId = authUtil.getCompanyAdminId(user);
+        if (companyAdminId == null) {
+            companyAdminId = user.getUserid();
         }
+        source.setUserIdFk(companyAdminId);
         LeadSourceMaster saved = leadSourceRepository.save(source);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success("Lead source created", saved));
@@ -357,9 +358,14 @@ public class LeadController {
 
     @PutMapping("/lead-source/{id}")
     public ResponseEntity<ApiResponse<LeadSourceMaster>> updateLeadSource(@PathVariable Long id,
-            @Valid @RequestBody LeadSourceMaster source) {
+            @Valid @RequestBody LeadSourceMaster source, Authentication auth) {
         if (!leadSourceRepository.existsById(id)) {
             throw new RuntimeException("Lead source not found with id: " + id);
+        }
+        User user = authUtil.getCurrentUser(auth);
+        Long companyAdminId = authUtil.getCompanyAdminId(user);
+        if (companyAdminId != null && source.getUserIdFk() == null) {
+            source.setUserIdFk(companyAdminId);
         }
         source.setId(id);
         LeadSourceMaster updated = leadSourceRepository.save(source);
@@ -404,10 +410,11 @@ public class LeadController {
         User user = authUtil.getCurrentUser(auth);
         group.setId(null);
         group.setActive(true);
-        if (!authUtil.isSuperAdmin(user.getRole())) {
-            Long companyAdminId = authUtil.getCompanyAdminId(user);
-            group.setUserIdFk(companyAdminId);
+        Long companyAdminId = authUtil.getCompanyAdminId(user);
+        if (companyAdminId == null) {
+            companyAdminId = user.getUserid();
         }
+        group.setUserIdFk(companyAdminId);
         LeadGroupsMaster saved = leadGroupRepository.save(group);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success("Lead group created", saved));
@@ -415,9 +422,14 @@ public class LeadController {
 
     @PutMapping("/lead-group/{id}")
     public ResponseEntity<ApiResponse<LeadGroupsMaster>> updateLeadGroup(@PathVariable Long id,
-            @Valid @RequestBody LeadGroupsMaster group) {
+            @Valid @RequestBody LeadGroupsMaster group, Authentication auth) {
         if (!leadGroupRepository.existsById(id)) {
             throw new RuntimeException("Lead group not found with id: " + id);
+        }
+        User user = authUtil.getCurrentUser(auth);
+        Long companyAdminId = authUtil.getCompanyAdminId(user);
+        if (companyAdminId != null && group.getUserIdFk() == null) {
+            group.setUserIdFk(companyAdminId);
         }
         group.setId(id);
         LeadGroupsMaster updated = leadGroupRepository.save(group);
@@ -462,10 +474,11 @@ public class LeadController {
         User user = authUtil.getCurrentUser(auth);
         status.setId(null);
         status.setActive(true);
-        if (!authUtil.isSuperAdmin(user.getRole())) {
-            Long companyAdminId = authUtil.getCompanyAdminId(user);
-            status.setUserIdFk(companyAdminId);
+        Long companyAdminId = authUtil.getCompanyAdminId(user);
+        if (companyAdminId == null) {
+            companyAdminId = user.getUserid();
         }
+        status.setUserIdFk(companyAdminId);
         LeadStatusMaster saved = leadStatusRepository.save(status);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success("Lead status created", saved));
@@ -473,9 +486,14 @@ public class LeadController {
 
     @PutMapping("/lead-status/{id}")
     public ResponseEntity<ApiResponse<LeadStatusMaster>> updateLeadStatus(@PathVariable Long id,
-            @Valid @RequestBody LeadStatusMaster status) {
+            @Valid @RequestBody LeadStatusMaster status, Authentication auth) {
         if (!leadStatusRepository.existsById(id)) {
             throw new RuntimeException("Lead status not found with id: " + id);
+        }
+        User user = authUtil.getCurrentUser(auth);
+        Long companyAdminId = authUtil.getCompanyAdminId(user);
+        if (companyAdminId != null && status.getUserIdFk() == null) {
+            status.setUserIdFk(companyAdminId);
         }
         status.setId(id);
         LeadStatusMaster updated = leadStatusRepository.save(status);
