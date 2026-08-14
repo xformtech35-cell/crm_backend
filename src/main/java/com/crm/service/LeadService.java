@@ -204,11 +204,12 @@ public class LeadService {
 
                 List<Long> targetTeamIds = new ArrayList<>();
                 if (tm.getTeamIdFk() != null) targetTeamIds.add(tm.getTeamIdFk());
-                createTeamRepository.findByTeamMemberIdFk(tm.getTeamMemberId()).forEach(ct -> {
+                List<CreateTeam> cts = createTeamRepository.findByTeamMemberIdFk(tm.getTeamMemberId());
+                for (CreateTeam ct : cts) {
                     if (ct.getTeamIdFk() != null && !targetTeamIds.contains(ct.getTeamIdFk())) {
                         targetTeamIds.add(ct.getTeamIdFk());
                     }
-                });
+                }
 
                 List<String> targetEmails = new ArrayList<>();
                 if (tm.getTeamMemberEmail() != null && !tm.getTeamMemberEmail().isBlank()) {
