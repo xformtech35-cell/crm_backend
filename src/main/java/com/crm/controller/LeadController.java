@@ -327,6 +327,9 @@ public class LeadController {
         } else {
             sources = leadSourceRepository.findByActiveTrue();
         }
+        sources = sources.stream()
+                .filter(s -> s != null && s.getSourceName() != null && !s.getSourceName().trim().isEmpty() && !"null".equalsIgnoreCase(s.getSourceName().trim()))
+                .collect(java.util.stream.Collectors.toList());
         return ResponseEntity.ok(ApiResponse.success("Lead sources fetched", sources));
     }
 
@@ -382,6 +385,9 @@ public class LeadController {
         } else {
             groups = leadGroupRepository.findByActiveTrue();
         }
+        groups = groups.stream()
+                .filter(g -> g != null && g.getGroupName() != null && !g.getGroupName().trim().isEmpty() && !"null".equalsIgnoreCase(g.getGroupName().trim()))
+                .collect(java.util.stream.Collectors.toList());
         return ResponseEntity.ok(ApiResponse.success("Lead groups fetched", groups));
     }
 
@@ -437,6 +443,9 @@ public class LeadController {
         } else {
             statuses = leadStatusRepository.findByActiveTrue();
         }
+        statuses = statuses.stream()
+                .filter(s -> s != null && s.getStatusName() != null && !s.getStatusName().trim().isEmpty() && !"null".equalsIgnoreCase(s.getStatusName().trim()))
+                .collect(java.util.stream.Collectors.toList());
         return ResponseEntity.ok(ApiResponse.success("Lead statuses fetched", statuses));
     }
 
