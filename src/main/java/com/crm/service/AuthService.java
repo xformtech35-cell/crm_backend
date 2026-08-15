@@ -258,19 +258,24 @@ public class AuthService {
                 List<String> perms = permissionRepository.findByRoleIdFk(companyAdminRole.get().getRoleId())
                         .stream().map(Permission::getGrpPerm).collect(Collectors.toList());
                 if (!perms.isEmpty()) {
-                    return perms;
+                    List<String> mutablePerms = new java.util.ArrayList<>(perms);
+                    if (!mutablePerms.contains("negotiations.view")) mutablePerms.add("negotiations.view");
+                    if (!mutablePerms.contains("negotiations.edit")) mutablePerms.add("negotiations.edit");
+                    if (!mutablePerms.contains("team_leads.view")) mutablePerms.add("team_leads.view");
+                    return mutablePerms;
                 }
             }
 
             return List.of(
                 "dashboard.view", "roles.view", "settings.view",
                 "leads.view", "leads.create", "leads.edit", "leads.delete", "leads.import",
+                "negotiations.view", "negotiations.edit",
                 "opportunities.view", "opportunities.create", "opportunities.edit", "opportunities.delete",
                 "projects.view", "projects.create", "projects.edit", "projects.delete",
                 "tasks.view", "tasks.create", "tasks.edit", "tasks.delete",
                 "contacts.view", "contacts.create", "contacts.edit", "contacts.delete",
                 "organizations.view", "organizations.create", "organizations.edit", "organizations.delete",
-                "teams.view", "teams.create", "teams.edit", "teams.delete",
+                "teams.view", "teams.create", "teams.edit", "teams.delete", "team_leads.view", "team_leads.edit",
                 "users.view", "users.create", "users.edit", "users.delete",
                 "reports.view", "calendar.view", "calendar.create", "calendar.edit", "calendar.delete",
                 "attendance.view", "attendance.edit", "integrations.view", "integrations.edit",
@@ -285,8 +290,19 @@ public class AuthService {
             Optional<com.crm.entity.TeamMember> tmOpt = teamMemberRepository.findByTeamMemberEmail(user.getUserEmail());
             if (tmOpt.isPresent() && tmOpt.get().getTeamMemberRole() != null) {
                 Long tmRoleId = tmOpt.get().getTeamMemberRole();
-                return permissionRepository.findByRoleIdFk(tmRoleId)
+                List<String> perms = permissionRepository.findByRoleIdFk(tmRoleId)
                         .stream().map(Permission::getGrpPerm).collect(Collectors.toList());
+                if (!perms.isEmpty()) {
+                    Optional<Role> roleOpt = roleRepository.findById(tmRoleId);
+                    if (roleOpt.isPresent() && "ADMIN".equalsIgnoreCase(roleOpt.get().getRoleName())) {
+                        List<String> mutablePerms = new java.util.ArrayList<>(perms);
+                        if (!mutablePerms.contains("negotiations.view")) mutablePerms.add("negotiations.view");
+                        if (!mutablePerms.contains("negotiations.edit")) mutablePerms.add("negotiations.edit");
+                        if (!mutablePerms.contains("team_leads.view")) mutablePerms.add("team_leads.view");
+                        return mutablePerms;
+                    }
+                    return perms;
+                }
             }
         }
 
@@ -310,8 +326,17 @@ public class AuthService {
             }
         }
 
-        return roleOpt.map(role -> permissionRepository.findByRoleIdFk(role.getRoleId())
-                        .stream().map(Permission::getGrpPerm).collect(Collectors.toList()))
-                .orElse(List.of());
+        return roleOpt.map(role -> {
+            List<String> perms = permissionRepository.findByRoleIdFk(role.getRoleId())
+                    .stream().map(Permission::getGrpPerm).collect(Collectors.toList());
+            if ("ADMIN".equalsIgnoreCase(role.getRoleName())) {
+                List<String> mutablePerms = new java.util.ArrayList<>(perms);
+                if (!mutablePerms.contains("negotiations.view")) mutablePerms.add("negotiations.view");
+                if (!mutablePerms.contains("negotiations.edit")) mutablePerms.add("negotiations.edit");
+                if (!mutablePerms.contains("team_leads.view")) mutablePerms.add("team_leads.view");
+                return mutablePerms;
+            }
+            return perms;
+        }).orElse(List.of());
     }
 }

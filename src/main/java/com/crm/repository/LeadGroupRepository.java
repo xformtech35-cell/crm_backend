@@ -15,6 +15,6 @@ public interface LeadGroupRepository
 
     List<LeadGroupsMaster> findByActiveTrueAndUserIdFk(Long userIdFk);
 
-    @org.springframework.data.jpa.repository.Query("SELECT g FROM LeadGroupsMaster g WHERE g.active = true AND g.groupName IS NOT NULL AND TRIM(g.groupName) != '' AND LOWER(TRIM(g.groupName)) != 'null' AND (g.userIdFk = :userIdFk OR g.userIdFk IS NULL)")
+    @org.springframework.data.jpa.repository.Query("SELECT g FROM LeadGroupsMaster g WHERE g.active = true AND g.groupName IS NOT NULL AND TRIM(g.groupName) != '' AND LOWER(TRIM(g.groupName)) != 'null' AND (g.userIdFk = :userIdFk OR (g.userIdFk IS NULL AND g.groupName NOT IN (SELECT o.groupName FROM LeadGroupsMaster o WHERE o.userIdFk = :userIdFk AND o.active = false)))")
     List<LeadGroupsMaster> findActiveByUserIdFkOrGlobal(@org.springframework.data.repository.query.Param("userIdFk") Long userIdFk);
 }

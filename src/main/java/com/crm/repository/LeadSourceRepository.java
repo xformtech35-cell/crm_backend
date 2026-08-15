@@ -15,6 +15,6 @@ public interface LeadSourceRepository
 
     List<LeadSourceMaster> findByActiveTrueAndUserIdFk(Long userIdFk);
 
-    @org.springframework.data.jpa.repository.Query("SELECT s FROM LeadSourceMaster s WHERE s.active = true AND s.sourceName IS NOT NULL AND TRIM(s.sourceName) != '' AND LOWER(TRIM(s.sourceName)) != 'null' AND (s.userIdFk = :userIdFk OR s.userIdFk IS NULL)")
+    @org.springframework.data.jpa.repository.Query("SELECT s FROM LeadSourceMaster s WHERE s.active = true AND s.sourceName IS NOT NULL AND TRIM(s.sourceName) != '' AND LOWER(TRIM(s.sourceName)) != 'null' AND (s.userIdFk = :userIdFk OR (s.userIdFk IS NULL AND s.sourceName NOT IN (SELECT o.sourceName FROM LeadSourceMaster o WHERE o.userIdFk = :userIdFk AND o.active = false)))")
     List<LeadSourceMaster> findActiveByUserIdFkOrGlobal(@org.springframework.data.repository.query.Param("userIdFk") Long userIdFk);
 }

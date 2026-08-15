@@ -205,6 +205,12 @@ public class LeadController {
         }
     }
 
+    @DeleteMapping("/reminders/{reminderId}")
+    public ResponseEntity<ApiResponse<Void>> deleteReminder(@PathVariable Long reminderId) {
+        leadService.deleteReminder(reminderId);
+        return ResponseEntity.ok(ApiResponse.success("Reminder deleted", null));
+    }
+
     @PostMapping("/{id}/convert")
     public ResponseEntity<ApiResponse<Opportunity>> convertToOpportunity(@PathVariable Long id, Authentication auth) {
         User user = authUtil.getCurrentUser(auth);
@@ -344,12 +350,26 @@ public class LeadController {
     @PostMapping("/lead-source")
     public ResponseEntity<ApiResponse<LeadSourceMaster>> createLeadSource(@Valid @RequestBody LeadSourceMaster source, Authentication auth) {
         User user = authUtil.getCurrentUser(auth);
-        source.setId(null);
-        source.setActive(true);
+        String name = source.getSourceName() != null ? source.getSourceName().trim() : "";
+        if (name.isEmpty()) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("Lead source name cannot be empty"));
+        }
+
         Long companyAdminId = authUtil.getCompanyAdminId(user);
         if (companyAdminId == null) {
             companyAdminId = user.getUserid();
         }
+
+        List<LeadSourceMaster> existing = leadSourceRepository.findActiveByUserIdFkOrGlobal(companyAdminId);
+        boolean duplicate = existing.stream()
+                .anyMatch(s -> s.getSourceName() != null && s.getSourceName().trim().equalsIgnoreCase(name));
+        if (duplicate) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("Lead source '" + name + "' already exists!"));
+        }
+
+        source.setId(null);
+        source.setSourceName(name);
+        source.setActive(true);
         source.setUserIdFk(companyAdminId);
         LeadSourceMaster saved = leadSourceRepository.save(source);
         return ResponseEntity.status(HttpStatus.CREATED)
@@ -359,25 +379,57 @@ public class LeadController {
     @PutMapping("/lead-source/{id}")
     public ResponseEntity<ApiResponse<LeadSourceMaster>> updateLeadSource(@PathVariable Long id,
             @Valid @RequestBody LeadSourceMaster source, Authentication auth) {
-        if (!leadSourceRepository.existsById(id)) {
-            throw new RuntimeException("Lead source not found with id: " + id);
-        }
+        LeadSourceMaster existingSource = leadSourceRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Lead source not found with id: " + id));
+
         User user = authUtil.getCurrentUser(auth);
         Long companyAdminId = authUtil.getCompanyAdminId(user);
-        if (companyAdminId != null && source.getUserIdFk() == null) {
-            source.setUserIdFk(companyAdminId);
+        if (companyAdminId == null) {
+            companyAdminId = user.getUserid();
         }
-        source.setId(id);
-        LeadSourceMaster updated = leadSourceRepository.save(source);
+
+        String name = source.getSourceName() != null ? source.getSourceName().trim() : "";
+        if (name.isEmpty()) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("Lead source name cannot be empty"));
+        }
+
+        List<LeadSourceMaster> existing = leadSourceRepository.findActiveByUserIdFkOrGlobal(companyAdminId);
+        boolean duplicate = existing.stream()
+                .anyMatch(s -> s.getSourceName() != null && s.getSourceName().trim().equalsIgnoreCase(name) && !s.getId().equals(id));
+        if (duplicate) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("Lead source '" + name + "' already exists!"));
+        }
+
+        existingSource.setSourceName(name);
+        existingSource.setDescription(source.getDescription());
+        if (companyAdminId != null && existingSource.getUserIdFk() == null) {
+            existingSource.setUserIdFk(companyAdminId);
+        }
+        LeadSourceMaster updated = leadSourceRepository.save(existingSource);
         return ResponseEntity.ok(ApiResponse.success("Lead source updated", updated));
     }
 
     @DeleteMapping("/lead-source/{id}")
-    public ResponseEntity<ApiResponse<Void>> deleteLeadSource(@PathVariable Long id) {
+    public ResponseEntity<ApiResponse<Void>> deleteLeadSource(@PathVariable Long id, Authentication auth) {
         LeadSourceMaster source = leadSourceRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Lead source not found"));
-        source.setActive(false);
-        leadSourceRepository.save(source);
+        User user = authUtil.getCurrentUser(auth);
+        Long companyAdminId = authUtil.getCompanyAdminId(user);
+        if (companyAdminId == null) {
+            companyAdminId = user.getUserid();
+        }
+
+        if (source.getUserIdFk() == null) {
+            LeadSourceMaster companyOverride = new LeadSourceMaster();
+            companyOverride.setSourceName(source.getSourceName());
+            companyOverride.setDescription(source.getDescription());
+            companyOverride.setActive(false);
+            companyOverride.setUserIdFk(companyAdminId);
+            leadSourceRepository.save(companyOverride);
+        } else {
+            source.setActive(false);
+            leadSourceRepository.save(source);
+        }
         return ResponseEntity.ok(ApiResponse.success("Lead source deleted", null));
     }
 
@@ -408,12 +460,26 @@ public class LeadController {
     @PostMapping("/lead-group")
     public ResponseEntity<ApiResponse<LeadGroupsMaster>> createLeadGroup(@Valid @RequestBody LeadGroupsMaster group, Authentication auth) {
         User user = authUtil.getCurrentUser(auth);
-        group.setId(null);
-        group.setActive(true);
+        String name = group.getGroupName() != null ? group.getGroupName().trim() : "";
+        if (name.isEmpty()) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("Lead group name cannot be empty"));
+        }
+
         Long companyAdminId = authUtil.getCompanyAdminId(user);
         if (companyAdminId == null) {
             companyAdminId = user.getUserid();
         }
+
+        List<LeadGroupsMaster> existing = leadGroupRepository.findActiveByUserIdFkOrGlobal(companyAdminId);
+        boolean duplicate = existing.stream()
+                .anyMatch(g -> g.getGroupName() != null && g.getGroupName().trim().equalsIgnoreCase(name));
+        if (duplicate) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("Lead group '" + name + "' already exists!"));
+        }
+
+        group.setId(null);
+        group.setGroupName(name);
+        group.setActive(true);
         group.setUserIdFk(companyAdminId);
         LeadGroupsMaster saved = leadGroupRepository.save(group);
         return ResponseEntity.status(HttpStatus.CREATED)
@@ -423,25 +489,55 @@ public class LeadController {
     @PutMapping("/lead-group/{id}")
     public ResponseEntity<ApiResponse<LeadGroupsMaster>> updateLeadGroup(@PathVariable Long id,
             @Valid @RequestBody LeadGroupsMaster group, Authentication auth) {
-        if (!leadGroupRepository.existsById(id)) {
-            throw new RuntimeException("Lead group not found with id: " + id);
-        }
+        LeadGroupsMaster existingGroup = leadGroupRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Lead group not found with id: " + id));
+
         User user = authUtil.getCurrentUser(auth);
         Long companyAdminId = authUtil.getCompanyAdminId(user);
-        if (companyAdminId != null && group.getUserIdFk() == null) {
-            group.setUserIdFk(companyAdminId);
+        if (companyAdminId == null) {
+            companyAdminId = user.getUserid();
         }
-        group.setId(id);
-        LeadGroupsMaster updated = leadGroupRepository.save(group);
+
+        String name = group.getGroupName() != null ? group.getGroupName().trim() : "";
+        if (name.isEmpty()) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("Lead group name cannot be empty"));
+        }
+
+        List<LeadGroupsMaster> existing = leadGroupRepository.findActiveByUserIdFkOrGlobal(companyAdminId);
+        boolean duplicate = existing.stream()
+                .anyMatch(g -> g.getGroupName() != null && g.getGroupName().trim().equalsIgnoreCase(name) && !g.getId().equals(id));
+        if (duplicate) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("Lead group '" + name + "' already exists!"));
+        }
+
+        existingGroup.setGroupName(name);
+        if (companyAdminId != null && existingGroup.getUserIdFk() == null) {
+            existingGroup.setUserIdFk(companyAdminId);
+        }
+        LeadGroupsMaster updated = leadGroupRepository.save(existingGroup);
         return ResponseEntity.ok(ApiResponse.success("Lead group updated", updated));
     }
 
     @DeleteMapping("/lead-group/{id}")
-    public ResponseEntity<ApiResponse<Void>> deleteLeadGroup(@PathVariable Long id) {
+    public ResponseEntity<ApiResponse<Void>> deleteLeadGroup(@PathVariable Long id, Authentication auth) {
         LeadGroupsMaster group = leadGroupRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Lead group not found"));
-        group.setActive(false);
-        leadGroupRepository.save(group);
+        User user = authUtil.getCurrentUser(auth);
+        Long companyAdminId = authUtil.getCompanyAdminId(user);
+        if (companyAdminId == null) {
+            companyAdminId = user.getUserid();
+        }
+
+        if (group.getUserIdFk() == null) {
+            LeadGroupsMaster companyOverride = new LeadGroupsMaster();
+            companyOverride.setGroupName(group.getGroupName());
+            companyOverride.setActive(false);
+            companyOverride.setUserIdFk(companyAdminId);
+            leadGroupRepository.save(companyOverride);
+        } else {
+            group.setActive(false);
+            leadGroupRepository.save(group);
+        }
         return ResponseEntity.ok(ApiResponse.success("Lead group deleted", null));
     }
 
@@ -472,12 +568,26 @@ public class LeadController {
     @PostMapping("/lead-status")
     public ResponseEntity<ApiResponse<LeadStatusMaster>> createLeadStatus(@Valid @RequestBody LeadStatusMaster status, Authentication auth) {
         User user = authUtil.getCurrentUser(auth);
-        status.setId(null);
-        status.setActive(true);
+        String name = status.getStatusName() != null ? status.getStatusName().trim() : "";
+        if (name.isEmpty()) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("Lead status name cannot be empty"));
+        }
+
         Long companyAdminId = authUtil.getCompanyAdminId(user);
         if (companyAdminId == null) {
             companyAdminId = user.getUserid();
         }
+
+        List<LeadStatusMaster> existing = leadStatusRepository.findActiveByUserIdFkOrGlobal(companyAdminId);
+        boolean duplicate = existing.stream()
+                .anyMatch(s -> s.getStatusName() != null && s.getStatusName().trim().equalsIgnoreCase(name));
+        if (duplicate) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("Lead status '" + name + "' already exists!"));
+        }
+
+        status.setId(null);
+        status.setStatusName(name);
+        status.setActive(true);
         status.setUserIdFk(companyAdminId);
         LeadStatusMaster saved = leadStatusRepository.save(status);
         return ResponseEntity.status(HttpStatus.CREATED)
@@ -487,25 +597,57 @@ public class LeadController {
     @PutMapping("/lead-status/{id}")
     public ResponseEntity<ApiResponse<LeadStatusMaster>> updateLeadStatus(@PathVariable Long id,
             @Valid @RequestBody LeadStatusMaster status, Authentication auth) {
-        if (!leadStatusRepository.existsById(id)) {
-            throw new RuntimeException("Lead status not found with id: " + id);
-        }
+        LeadStatusMaster existingStatus = leadStatusRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Lead status not found with id: " + id));
+
         User user = authUtil.getCurrentUser(auth);
         Long companyAdminId = authUtil.getCompanyAdminId(user);
-        if (companyAdminId != null && status.getUserIdFk() == null) {
-            status.setUserIdFk(companyAdminId);
+        if (companyAdminId == null) {
+            companyAdminId = user.getUserid();
         }
-        status.setId(id);
-        LeadStatusMaster updated = leadStatusRepository.save(status);
+
+        String name = status.getStatusName() != null ? status.getStatusName().trim() : "";
+        if (name.isEmpty()) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("Lead status name cannot be empty"));
+        }
+
+        List<LeadStatusMaster> existing = leadStatusRepository.findActiveByUserIdFkOrGlobal(companyAdminId);
+        boolean duplicate = existing.stream()
+                .anyMatch(s -> s.getStatusName() != null && s.getStatusName().trim().equalsIgnoreCase(name) && !s.getId().equals(id));
+        if (duplicate) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("Lead status '" + name + "' already exists!"));
+        }
+
+        existingStatus.setStatusName(name);
+        existingStatus.setDescription(status.getDescription());
+        if (companyAdminId != null && existingStatus.getUserIdFk() == null) {
+            existingStatus.setUserIdFk(companyAdminId);
+        }
+        LeadStatusMaster updated = leadStatusRepository.save(existingStatus);
         return ResponseEntity.ok(ApiResponse.success("Lead status updated", updated));
     }
 
     @DeleteMapping("/lead-status/{id}")
-    public ResponseEntity<ApiResponse<Void>> deleteLeadStatus(@PathVariable Long id) {
+    public ResponseEntity<ApiResponse<Void>> deleteLeadStatus(@PathVariable Long id, Authentication auth) {
         LeadStatusMaster status = leadStatusRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Lead status not found"));
-        status.setActive(false);
-        leadStatusRepository.save(status);
+        User user = authUtil.getCurrentUser(auth);
+        Long companyAdminId = authUtil.getCompanyAdminId(user);
+        if (companyAdminId == null) {
+            companyAdminId = user.getUserid();
+        }
+
+        if (status.getUserIdFk() == null) {
+            LeadStatusMaster companyOverride = new LeadStatusMaster();
+            companyOverride.setStatusName(status.getStatusName());
+            companyOverride.setDescription(status.getDescription());
+            companyOverride.setActive(false);
+            companyOverride.setUserIdFk(companyAdminId);
+            leadStatusRepository.save(companyOverride);
+        } else {
+            status.setActive(false);
+            leadStatusRepository.save(status);
+        }
         return ResponseEntity.ok(ApiResponse.success("Lead status deleted", null));
     }
 

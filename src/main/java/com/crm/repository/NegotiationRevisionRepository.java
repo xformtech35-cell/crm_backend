@@ -16,17 +16,9 @@ public interface NegotiationRevisionRepository
 
     List<NegotiationRevision> findByNegotiationIdOrderByUpdatedDateDesc(Long negotiationId);
     
-//    Optional<NegotiationRevision> findByQuotationNo(String quotationNo);
-
+    List<NegotiationRevision> findByNegotiationIdOrLeadIdFkOrderByUpdatedDateDesc(Long negotiationId, Long leadIdFk);
+    
     List<NegotiationRevision> findByQuotationNo(String quotationNo);
 
-    
-    // Find by quotation number (returns list since multiple revisions can have same quotation no)
-    
-    // Find by quotation number and revision (returns unique result)
-    Optional<NegotiationRevision> findByQuotationNoAndQuotationRevision(String quotationNo, String quotationRevision);
-    
-    // Or use native query
-    @Query("SELECT n FROM NegotiationRevision n WHERE n.quotationNo = :quotationNo AND n.quotationRevision = :revision")
-    Optional<NegotiationRevision> findByQuotationNoAndRevision(@Param("quotationNo") String quotationNo, @Param("revision") String revision);
+    Optional<NegotiationRevision> findFirstByNegotiationIdAndQuotationRevision(Long negotiationId, String quotationRevision);
 }

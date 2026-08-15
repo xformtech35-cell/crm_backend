@@ -47,6 +47,8 @@ import com.crm.repository.TeamMemberRepository;
 import com.crm.repository.UserRepository;
 import com.crm.entity.TeamMember;
 import com.crm.entity.User;
+import com.crm.entity.Document;
+import com.crm.repository.DocumentRepository;
 import com.crm.util.AppConstants;
 import com.crm.util.AuthUtil;
 import com.crm.util.FileUploadUtil;
@@ -79,6 +81,7 @@ public class LeadService {
 
     private final NegotiationRevisionRepository negotiationRevisionRepository;
     private final NegotiationRepository negotiationRepository;
+    private final DocumentRepository documentRepository;
 
 
     // public LeadService() {
@@ -341,7 +344,13 @@ public class LeadService {
 
         Lead lead = getLeadById(id);
         
-        // Save current state as revision before updating
+        // Snapshot OLD state (e.g. R0) BEFORE modifying fields if it's in Negotiation
+        boolean wasNegotiation = "Negotiation".equalsIgnoreCase(lead.getLeadStatus())
+                || "Negotiation".equalsIgnoreCase(lead.getLeadOutcomeStatus());
+        if (wasNegotiation) {
+            syncNegotiationForLead(lead);
+            saveNegotiationRevision(lead);
+        }
 
         // Update Lead fields
         mapToEntity(request, lead);
@@ -397,12 +406,9 @@ public class LeadService {
         // Save Lead
         Lead saved = leadRepository.save(lead);
 
-        saveNegotiationRevision(lead);
-
-        // ==========================
-        // Sync Negotiation Table
-        // ==========================
+        // Sync Negotiation & Revision History (Snapshot NEW state, e.g. R1)
         syncNegotiationForLead(saved);
+        saveNegotiationRevision(saved);
 
         return saved;
     }
@@ -414,6 +420,14 @@ public class LeadService {
                 || "Negotiation".equalsIgnoreCase(lead.getLeadOutcomeStatus());
 
         if (isNegotiation) {
+            String defaultRevision = (lead.getQuotationRevision() != null && !lead.getQuotationRevision().isBlank()) 
+                    ? lead.getQuotationRevision() : "R0";
+
+            if (lead.getQuotationRevision() == null || lead.getQuotationRevision().isBlank()) {
+                lead.setQuotationRevision("R0");
+                leadRepository.save(lead);
+            }
+
             Negotiation negotiation = negotiationRepository
                     .findFirstByLeadIdFk(lead.getLeadId())
                     .orElse(null);
@@ -424,7 +438,7 @@ public class LeadService {
                         .negotiationName(lead.getLeadOrganisationName())
                         .negotiationTitle(lead.getLeadTitle())
                         .quotationNo(lead.getQuotationNumber())
-                        .quotationRevision(lead.getQuotationRevision())
+                        .quotationRevision(defaultRevision)
                         .quotationAmount(lead.getQuotationAmount())
                         .remarks(lead.getFollowUpRemark())
                         .negotiationStatus("Negotiation")
@@ -434,7 +448,7 @@ public class LeadService {
                 negotiation.setNegotiationName(lead.getLeadOrganisationName());
                 negotiation.setNegotiationTitle(lead.getLeadTitle());
                 negotiation.setQuotationNo(lead.getQuotationNumber());
-                negotiation.setQuotationRevision(lead.getQuotationRevision());
+                negotiation.setQuotationRevision(defaultRevision);
                 negotiation.setQuotationAmount(lead.getQuotationAmount());
                 negotiation.setRemarks(lead.getFollowUpRemark());
                 if (lead.getLeadOutcomeStatus() != null && !lead.getLeadOutcomeStatus().isBlank()) {
@@ -443,16 +457,124 @@ public class LeadService {
                     negotiation.setNegotiationStatus(lead.getLeadStatus());
                 }
             }
-            negotiationRepository.save(negotiation);
+            negotiation = negotiationRepository.save(negotiation);
+
+            ensureR0RevisionExists(negotiation, lead);
+        }
+    }
+
+    @Transactional
+    public void syncLeadDocumentsToRevision(Lead lead, NegotiationRevision revision) {
+        if (lead == null || revision == null || revision.getId() == null) return;
+
+        List<String> docUrls = new ArrayList<>();
+        if (lead.getUploadDocument() != null && !lead.getUploadDocument().isBlank()) docUrls.add(lead.getUploadDocument());
+        if (lead.getUploadDocument1() != null && !lead.getUploadDocument1().isBlank()) docUrls.add(lead.getUploadDocument1());
+        if (lead.getUploadDocument2() != null && !lead.getUploadDocument2().isBlank()) docUrls.add(lead.getUploadDocument2());
+        if (lead.getUploadDocument3() != null && !lead.getUploadDocument3().isBlank()) docUrls.add(lead.getUploadDocument3());
+
+        if (docUrls.isEmpty()) return;
+
+        String qtnNo = revision.getQuotationNo();
+        List<Document> existingDocs = documentRepository.findByNegotiationRevisionId(revision.getId());
+        if (existingDocs == null) existingDocs = new ArrayList<>();
+
+        for (String url : docUrls) {
+            String normUrl = url.trim();
+            boolean exists = existingDocs.stream()
+                    .anyMatch(d -> d.getFileUrl() != null && d.getFileUrl().equalsIgnoreCase(normUrl));
+            if (!exists) {
+                String fileName = normUrl.substring(normUrl.lastIndexOf('/') + 1);
+                if (fileName.contains("_")) {
+                    fileName = fileName.substring(fileName.indexOf('_') + 1);
+                }
+
+                Document doc = Document.builder()
+                        .quotationNo(qtnNo)
+                        .fileName(fileName)
+                        .fileUrl(normUrl)
+                        .fileSize(1024L)
+                        .fileType(normUrl.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/jpeg")
+                        .uploadedDate(LocalDateTime.now())
+                        .negotiationRevision(revision)
+                        .build();
+
+                documentRepository.saveAndFlush(doc);
+                log.info("Synced lead document '{}' to revision '{}' (ID: {})", fileName, revision.getQuotationRevision(), revision.getId());
+            }
+        }
+    }
+
+    @Transactional
+    public void ensureR0RevisionExists(Negotiation negotiation, Lead lead) {
+        if (negotiation == null || negotiation.getId() == null) return;
+        
+        Long leadId = (lead != null) ? lead.getLeadId() : negotiation.getLeadIdFk();
+        List<NegotiationRevision> allRevs;
+        if (leadId != null) {
+            allRevs = negotiationRevisionRepository.findByNegotiationIdOrLeadIdFkOrderByUpdatedDateDesc(negotiation.getId(), leadId);
+        } else {
+            allRevs = negotiationRevisionRepository.findByNegotiationIdOrderByUpdatedDateDesc(negotiation.getId());
+        }
+                
+        for (NegotiationRevision rev : allRevs) {
+            boolean modified = false;
+            if (rev.getNegotiationId() == null) {
+                rev.setNegotiationId(negotiation.getId());
+                modified = true;
+            }
+            if (rev.getQuotationRevision() == null || rev.getQuotationRevision().isBlank()) {
+                rev.setQuotationRevision("R0");
+                modified = true;
+            }
+            if (modified) {
+                negotiationRevisionRepository.saveAndFlush(rev);
+            }
+        }
+        
+        boolean hasR0 = allRevs.stream()
+                .anyMatch(r -> "R0".equalsIgnoreCase(r.getQuotationRevision()));
+                
+        NegotiationRevision r0Revision = null;
+        if (!hasR0) {
+            String baseQuotationNo = negotiation.getQuotationNo();
+            if (baseQuotationNo != null && baseQuotationNo.matches(".*/R\\d+$")) {
+                baseQuotationNo = baseQuotationNo.replaceAll("/R\\d+$", "");
+            }
+            if (baseQuotationNo == null || baseQuotationNo.isBlank()) {
+                baseQuotationNo = lead != null ? lead.getQuotationNumber() : "QTN-001";
+            }
+            
+            NegotiationRevision r0 = new NegotiationRevision();
+            r0.setNegotiationId(negotiation.getId());
+            r0.setLeadIdFk(leadId);
+            r0.setQuotationNo(baseQuotationNo);
+            r0.setQuotationRevision("R0");
+            r0.setQuotationAmount(lead != null && lead.getQuotationAmount() != null ? lead.getQuotationAmount() : (negotiation.getQuotationAmount() != null ? negotiation.getQuotationAmount() : java.math.BigDecimal.ZERO));
+            r0.setRemarks(lead != null && lead.getFollowUpRemark() != null ? lead.getFollowUpRemark() : negotiation.getRemarks());
+            r0.setEnquiryDescription(lead != null ? lead.getEnquiryDescription() : null);
+            r0.setQuotationDate(lead != null ? lead.getQuotationDate() : null);
+            r0.setNegotiationStatus("Negotiation");
+            r0.setUserIdFk(negotiation.getUserIdFk());
+            r0.setUpdatedDate(LocalDateTime.now().minusDays(365));
+            
+            r0Revision = negotiationRevisionRepository.saveAndFlush(r0);
+            log.info("Auto-created missing R0 revision for negotiation ID: {}, lead ID: {}", negotiation.getId(), leadId);
+        } else {
+            r0Revision = allRevs.stream()
+                    .filter(r -> "R0".equalsIgnoreCase(r.getQuotationRevision()))
+                    .findFirst().orElse(null);
+        }
+        
+        if (lead != null && r0Revision != null) {
+            syncLeadDocumentsToRevision(lead, r0Revision);
         }
     }
 
     /**
-
-     * Save current state as a negotiation revision before updating
+     * Save current state as a negotiation revision
      */
     private void saveNegotiationRevision(Lead lead) {
-        // Get the current negotiation
         Negotiation negotiation = negotiationRepository
                 .findFirstByLeadIdFk(lead.getLeadId())
                 .orElse(null);
@@ -461,33 +583,39 @@ public class LeadService {
             return;
         }
 
-        // Create revision from current state
-        NegotiationRevision revision = new NegotiationRevision();
+        String revNo = (lead.getQuotationRevision() != null && !lead.getQuotationRevision().isBlank())
+                ? lead.getQuotationRevision() : "R0";
 
-        // Set basic IDs
-        revision.setNegotiationId(negotiation.getId());
-        revision.setLeadIdFk(lead.getLeadId());
+        Optional<NegotiationRevision> existingRevOpt = negotiationRevisionRepository
+                .findFirstByNegotiationIdAndQuotationRevision(negotiation.getId(), revNo);
 
-        // Save Lead values (current state)
+        NegotiationRevision revision;
+        if (existingRevOpt.isPresent()) {
+            revision = existingRevOpt.get();
+        } else {
+            revision = new NegotiationRevision();
+            revision.setNegotiationId(negotiation.getId());
+            revision.setLeadIdFk(lead.getLeadId());
+        }
+
         revision.setQuotationNo(lead.getQuotationNumber());
-        revision.setQuotationRevision(lead.getQuotationRevision());
+        revision.setQuotationRevision(revNo);
         revision.setQuotationAmount(lead.getQuotationAmount());
         revision.setRemarks(lead.getFollowUpRemark());
         revision.setEnquiryDescription(lead.getEnquiryDescription());
         revision.setQuotationDate(lead.getQuotationDate());
-        
-        // Save Negotiation values (current state)
-        revision.setNegotiationStatus(negotiation.getNegotiationStatus());
+        revision.setNegotiationStatus(negotiation.getNegotiationStatus() != null ? negotiation.getNegotiationStatus() : "Negotiation");
         revision.setUserIdFk(negotiation.getUserIdFk());
-
-        // Set revision timestamp
         revision.setUpdatedDate(LocalDateTime.now());
 
-        // Save revision
-        negotiationRevisionRepository.save(revision);
+        NegotiationRevision savedRev = negotiationRevisionRepository.save(revision);
         
-        log.info("Saved negotiation revision for lead ID: {}, Negotiation ID: {}", 
-                 lead.getLeadId(), negotiation.getId());
+        if (lead != null) {
+            syncLeadDocumentsToRevision(lead, savedRev);
+        }
+
+        log.info("Saved/updated negotiation revision [{}] for lead ID: {}, Negotiation ID: {}", 
+                 revNo, lead.getLeadId(), negotiation.getId());
     }
 
     /**
@@ -774,11 +902,15 @@ public class LeadService {
                 .reminderText(reminderText)
                 .reminderDate(reminderDate != null
                         ? java.time.LocalDateTime
-                                .parse(reminderDate.length() == 10 ? reminderDate + "T00:00:00" : reminderDate)
+                                .parse(reminderDate.length() == 10 ? reminderDate + "T00:00:00" : reminderDate.replace(" ", "T"))
                         : LocalDateTime.now())
                 .userIdFk(userId)
                 .build();
         return leadReminderRepository.save(reminder);
+    }
+
+    public void deleteReminder(Long reminderId) {
+        leadReminderRepository.deleteById(reminderId);
     }
 
     public Opportunity convertToOpportunity(Long leadId, Long userId) {
@@ -842,18 +974,31 @@ public class LeadService {
                     continue;
                 }
 
+                String senderName = text(item, "SENDER_NAME").trim();
+                String senderCompany = text(item, "SENDER_COMPANY").trim();
+                String queryMessage = text(item, "QUERY_MESSAGE").trim();
+
+                if (senderName.isBlank() || senderName.equalsIgnoreCase("null")) {
+                    senderName = !senderCompany.isBlank() && !senderCompany.equalsIgnoreCase("null") ? senderCompany : "IndiaMART Buyer";
+                }
+                if (senderCompany.isBlank() || senderCompany.equalsIgnoreCase("null")) {
+                    senderCompany = senderName;
+                }
+
                 Lead lead = Lead.builder()
-                        .leadFirstName(text(item, "SENDER_NAME"))
+                        .leadFirstName(senderName)
+                        .companyContactPersonName(senderName)
                         .leadEmail(text(item, "SENDER_EMAIL"))
                         .leadMobileNo(text(item, "SENDER_MOBILE"))
                         .leadPhoneNo(text(item, "SENDER_PHONE"))
-                        .leadOrganisationName(text(item, "SENDER_COMPANY"))
+                        .leadOrganisationName(senderCompany)
                         .leadAddress(text(item, "SENDER_ADDRESS"))
                         .leadCity(text(item, "SENDER_CITY"))
                         .leadState(text(item, "SENDER_STATE"))
                         .leadCountry(text(item, "SENDER_COUNTRY_ISO"))
                         .leadTitle(firstPresent(item, "SUBJECT", "QUERY_PRODUCT_NAME"))
-                        .leadReason(text(item, "QUERY_MESSAGE"))
+                        .enquiryDescription(queryMessage)
+                        .leadReason(queryMessage)
                         .uniqueQueryId(queryId)
                         .leadSource(AppConstants.INDIAMART_SOURCE)
                         .leadType(AppConstants.INDIAMART_DEFAULT_TYPE)

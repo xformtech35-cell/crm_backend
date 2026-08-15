@@ -20,8 +20,11 @@ public class DataScopeConfigService {
     private final AuditLogService auditLogService;
 
     private static final List<String> ALL_MODULES = List.of(
-        "LEADS", "OPPORTUNITIES", "TASKS", "PROJECTS", "CONTACTS",
-        "ORGANIZATIONS", "TEAMS", "CALENDAR", "ATTENDANCE", "REPORTS"
+        "DASHBOARD", "ACTIVITIES", "EMAILS", "CALENDAR", "ATTENDANCE",
+        "LEADS", "NEGOTIATIONS", "LEAD_STATUS", "CONTACTS", "ORGANIZATIONS", "OPPORTUNITIES",
+        "PROJECTS", "TASKS", "TEAMS", "TEAM_LEADS", "TEAM_MEMBERS",
+        "ANALYTICS", "REPORTS", "AUTOMATION",
+        "ROLES", "INTEGRATIONS", "DATA_ACCESS", "SETTINGS", "TRASH"
     );
 
     public List<DataScopeConfig> getAllConfigs(Long companyAdminId) {

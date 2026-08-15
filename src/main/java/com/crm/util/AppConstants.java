@@ -30,7 +30,7 @@ public final class AppConstants {
     public static final long ADMIN_USER_ID = 1L;
 
     // Indiamart
-    public static final String INDIAMART_SOURCE = "Indiamart";
+    public static final String INDIAMART_SOURCE = "IndiaMART";
     public static final String INDIAMART_DEFAULT_TYPE = "Hot";
-    public static final String INDIAMART_DEFAULT_STATUS = "Contacted";
+    public static final String INDIAMART_DEFAULT_STATUS = "New Lead";
 }

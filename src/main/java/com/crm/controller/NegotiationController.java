@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -107,26 +108,10 @@ public class NegotiationController {
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getByUser(@PathVariable Long userId) {
 
         com.crm.entity.User user = userRepository.findById(userId).orElse(null);
-        List<Long> companyUserIds;
-        if (user != null) {
-            companyUserIds = leadService.getCompanyUserIds(user.getUserid(), user.getRole());
-        } else {
-            companyUserIds = List.of(userId);
+        if (user == null) {
+            return ResponseEntity.ok(ApiResponse.success("Negotiations fetched", new ArrayList<>()));
         }
-
-        // Auto-sync any existing leads with Negotiation status
-        List<Lead> leads;
-        if (user != null && ("SUPER_ADMIN".equalsIgnoreCase(user.getRole()) || "SUPER ADMIN".equalsIgnoreCase(user.getRole()))) {
-            leads = leadRepository.findAll();
-        } else {
-            leads = leadService.getAllLeads(user.getUserid(), user.getRole());
-        }
-
-        for (Lead l : leads) {
-            if ("Negotiation".equalsIgnoreCase(l.getLeadStatus()) || "Negotiation".equalsIgnoreCase(l.getLeadOutcomeStatus())) {
-                leadService.syncNegotiationForLead(l);
-            }
-        }
+        List<Long> companyUserIds = leadService.getCompanyUserIds(user.getUserid(), user.getRole());
 
         // Query negotiations for companyUserIds
         List<Negotiation> negotiations;
@@ -177,15 +162,21 @@ public class NegotiationController {
                     if (l.getInquiryDate() != null) {
                         inquiryDate = l.getInquiryDate().toString();
                     }
+                    map.put("uploadDocument", l.getUploadDocument());
+                    map.put("uploadDocument1", l.getUploadDocument1());
+                    map.put("uploadDocument2", l.getUploadDocument2());
+                    map.put("uploadDocument3", l.getUploadDocument3());
                 }
             }
 
             map.put("id", n.getId());
             map.put("leadIdFk", n.getLeadIdFk());
             map.put("negotiationName", n.getNegotiationName());
-            map.put("negotiationTitle", n.getNegotiationTitle());
-            map.put("quotationNo", quotationNo);
-            map.put("quotationRevision", n.getQuotationRevision());
+            String revNo = n.getQuotationRevision();
+            if (revNo == null || revNo.isBlank()) {
+                revNo = "R0";
+            }
+            map.put("quotationRevision", revNo);
             map.put("quotationAmount", n.getQuotationAmount());
             map.put("negotiationStatus", n.getNegotiationStatus());
             map.put("remarks", n.getRemarks());
@@ -340,20 +331,33 @@ public ResponseEntity<ApiResponse<Lead>> getDetails(@PathVariable Long id) {
     }
 
     @GetMapping("/{id}/revisions")
-
+    @Transactional
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getRevisions(@PathVariable Long id) {
+        Negotiation negotiation = negotiationRepository.findById(id).orElse(null);
+        if (negotiation == null) {
+            return ResponseEntity.ok(ApiResponse.success("Negotiation not found", new ArrayList<>()));
+        }
 
-        List<NegotiationRevision> revisions
-                = negotiationRevisionRepository.findByNegotiationIdOrderByUpdatedDateDesc(id);
+        if (negotiation.getLeadIdFk() != null) {
+            Optional<Lead> leadOpt = leadRepository.findById(negotiation.getLeadIdFk());
+            if (leadOpt.isPresent()) {
+                leadService.ensureR0RevisionExists(negotiation, leadOpt.get());
+            }
+        }
+
+        List<NegotiationRevision> revisions;
+        if (negotiation.getLeadIdFk() != null) {
+            revisions = negotiationRevisionRepository.findByNegotiationIdOrLeadIdFkOrderByUpdatedDateDesc(id, negotiation.getLeadIdFk());
+        } else {
+            revisions = negotiationRevisionRepository.findByNegotiationIdOrderByUpdatedDateDesc(id);
+        }
 
         List<Map<String, Object>> list = new ArrayList<>();
-
         for (NegotiationRevision rev : revisions) {
-
             Map<String, Object> map = new HashMap<>();
 
             map.put("id", rev.getId());
-            map.put("revisionNo", rev.getQuotationRevision());
+            map.put("revisionNo", rev.getQuotationRevision() != null ? rev.getQuotationRevision() : "R0");
             map.put("quotationNo", rev.getQuotationNo());
             map.put("quotationAmount", rev.getQuotationAmount());
             map.put("negotiationStatus", rev.getNegotiationStatus());
@@ -362,11 +366,16 @@ public ResponseEntity<ApiResponse<Lead>> getDetails(@PathVariable Long id) {
             map.put("quotationDate", rev.getQuotationDate());
             map.put("updatedDate", rev.getUpdatedDate());
             
-            // Get documents using quotationNo instead of revision ID
+            // Get documents using quotationNo or revision ID
             String quotationNo = rev.getQuotationNo();
-            List<Document> documents = documentRepository.findByQuotationNo(quotationNo);
+            List<Document> documents = null;
+            if (quotationNo != null && !quotationNo.isBlank()) {
+                documents = documentRepository.findByQuotationNo(quotationNo);
+            }
+            if (documents == null || documents.isEmpty()) {
+                documents = documentRepository.findByNegotiationRevisionId(rev.getId());
+            }
             
-            // Add document details
             if (documents != null && !documents.isEmpty()) {
                 List<Map<String, Object>> docList = new ArrayList<>();
                 for (Document doc : documents) {
@@ -376,14 +385,42 @@ public ResponseEntity<ApiResponse<Lead>> getDetails(@PathVariable Long id) {
                     docMap.put("fileSize", doc.getFileSize());
                     docMap.put("fileType", doc.getFileType());
                     docMap.put("uploadedDate", doc.getUploadedDate());
-                    docMap.put("fileUrl", doc.getFileUrl()); // Add file URL for viewing
+                    docMap.put("fileUrl", doc.getFileUrl());
                     docList.add(docMap);
                 }
                 map.put("documents", docList);
                 map.put("documentCount", documents.size());
             } else {
-                map.put("documents", new ArrayList<>());
-                map.put("documentCount", 0);
+                List<Map<String, Object>> docList = new ArrayList<>();
+                if (negotiation.getLeadIdFk() != null) {
+                    Optional<Lead> leadOptDoc = leadRepository.findById(negotiation.getLeadIdFk());
+                    if (leadOptDoc.isPresent()) {
+                        Lead lead = leadOptDoc.get();
+                        List<String> urls = new ArrayList<>();
+                        if (lead.getUploadDocument() != null && !lead.getUploadDocument().isBlank()) urls.add(lead.getUploadDocument());
+                        if (lead.getUploadDocument1() != null && !lead.getUploadDocument1().isBlank()) urls.add(lead.getUploadDocument1());
+                        if (lead.getUploadDocument2() != null && !lead.getUploadDocument2().isBlank()) urls.add(lead.getUploadDocument2());
+                        if (lead.getUploadDocument3() != null && !lead.getUploadDocument3().isBlank()) urls.add(lead.getUploadDocument3());
+
+                        for (int i = 0; i < urls.size(); i++) {
+                            String url = urls.get(i);
+                            String fileName = url.substring(url.lastIndexOf('/') + 1);
+                            if (fileName.contains("_")) {
+                                fileName = fileName.substring(fileName.indexOf('_') + 1);
+                            }
+                            Map<String, Object> docMap = new HashMap<>();
+                            docMap.put("id", "lead-doc-" + i);
+                            docMap.put("fileName", fileName);
+                            docMap.put("fileSize", 1024L);
+                            docMap.put("fileType", url.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/jpeg");
+                            docMap.put("uploadedDate", lead.getLeadCreatedDate());
+                            docMap.put("fileUrl", url);
+                            docList.add(docMap);
+                        }
+                    }
+                }
+                map.put("documents", docList);
+                map.put("documentCount", docList.size());
             }
 
             list.add(map);

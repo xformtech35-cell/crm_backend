@@ -81,21 +81,91 @@ public class IndiamartIntegrationService {
                         
                         // Check if lead already exists to prevent duplicate insertion
                         if (!leadRepository.existsByUniqueQueryId(queryId)) {
+                            String senderName = leadNode.path("SENDER_NAME").asText("").trim();
+                            String senderCompany = leadNode.path("SENDER_COMPANY").asText("").trim();
+                            if (senderCompany.isBlank() || senderCompany.equalsIgnoreCase("null")) {
+                                senderCompany = leadNode.path("GLUSR_USR_COMPANYNAME").asText("").trim();
+                            }
+                            
+                            String queryMessage = leadNode.path("QUERY_MESSAGE").asText("").trim();
+                            if (queryMessage.isBlank()) {
+                                queryMessage = leadNode.path("ENQ_MESSAGE").asText("").trim();
+                            }
+                            if (queryMessage.isBlank()) {
+                                queryMessage = leadNode.path("SUBJECT").asText("").trim();
+                            }
+                            queryMessage = cleanText(queryMessage);
+
+                            String productName = leadNode.path("QUERY_PRODUCT_NAME").asText("").trim();
+                            if (productName.isBlank()) {
+                                productName = leadNode.path("PRODUCT_NAME").asText("").trim();
+                            }
+                            if (!productName.isBlank() && !productName.equalsIgnoreCase("null") && !queryMessage.toLowerCase().contains(productName.toLowerCase())) {
+                                queryMessage = "Product: " + productName + (queryMessage.isBlank() ? "" : "\n" + queryMessage);
+                            }
+
+                            String queryTimeStr = leadNode.path("QUERY_TIME").asText("").trim();
+                            if (queryTimeStr.isBlank()) {
+                                queryTimeStr = leadNode.path("DATE_TIME_RE").asText("").trim();
+                            }
+                            if (queryTimeStr.isBlank()) {
+                                queryTimeStr = leadNode.path("QUERY_TIME_STAMP").asText("").trim();
+                            }
+
+                            java.time.LocalDate inquiryLocalDate = java.time.LocalDate.now();
+                            LocalDateTime createdLocalDateTime = LocalDateTime.now();
+
+                            if (!queryTimeStr.isBlank()) {
+                                try {
+                                    if (queryTimeStr.contains(" ")) {
+                                        String datePart = queryTimeStr.split(" ")[0];
+                                        if (datePart.contains("-") && datePart.length() == 10) {
+                                            inquiryLocalDate = java.time.LocalDate.parse(datePart);
+                                        }
+                                    } else if (queryTimeStr.length() >= 10 && queryTimeStr.contains("-")) {
+                                        inquiryLocalDate = java.time.LocalDate.parse(queryTimeStr.substring(0, 10));
+                                    }
+                                } catch (Exception ignored) {}
+                            }
+
+                            String contactPersonName = null;
+                            if (!senderName.isBlank() && !senderName.equalsIgnoreCase("null")) {
+                                if (!senderCompany.isBlank() && !senderCompany.equalsIgnoreCase("null") && !senderName.equalsIgnoreCase(senderCompany)) {
+                                    contactPersonName = senderName;
+                                } else if (senderCompany.isBlank() || senderCompany.equalsIgnoreCase("null")) {
+                                    senderCompany = senderName;
+                                    contactPersonName = senderName;
+                                }
+                            } else {
+                                senderName = !senderCompany.isBlank() && !senderCompany.equalsIgnoreCase("null") ? senderCompany : "IndiaMART Buyer";
+                                if (senderCompany.isBlank() || senderCompany.equalsIgnoreCase("null")) {
+                                    senderCompany = senderName;
+                                }
+                            }
+
                             Lead lead = Lead.builder()
                                     .uniqueQueryId(queryId)
-                                    .leadFirstName(leadNode.path("SENDER_NAME").asText("IndiaMART Buyer"))
-                                    .leadMobileNo(leadNode.path("SENDER_MOBILE").asText())
-                                    .leadEmail(leadNode.path("SENDER_EMAIL").asText())
-                                    .leadCountry(leadNode.path("SENDER_COUNTRY_ISO").asText())
-                                    .leadCity(leadNode.path("SENDER_CITY").asText())
-                                    .leadState(leadNode.path("SENDER_STATE").asText())
-                                    .leadOrganisationName(leadNode.path("SENDER_COMPANY").asText())
-                                    .leadReason(leadNode.path("QUERY_MESSAGE").asText())
-                                    .leadSource("India MART")
-                                    .leadStatus("New")
-                                    .leadCreatedDate(LocalDateTime.now())
+                                    .leadFirstName(senderName)
+                                    .companyContactPersonName(contactPersonName != null ? contactPersonName : senderName)
+                                    .leadMobileNo(leadNode.path("SENDER_MOBILE").asText(""))
+                                    .leadEmail(leadNode.path("SENDER_EMAIL").asText(""))
+                                    .leadCountry(leadNode.path("SENDER_COUNTRY_ISO").asText(""))
+                                    .leadCity(leadNode.path("SENDER_CITY").asText(""))
+                                    .leadState(leadNode.path("SENDER_STATE").asText(""))
+                                    .leadOrganisationName(senderCompany)
+                                    .enquiryDescription(queryMessage)
+                                    .leadReason(queryMessage)
+                                    .leadSource(com.crm.util.AppConstants.INDIAMART_SOURCE)
+                                    .leadStatus(com.crm.util.AppConstants.INDIAMART_DEFAULT_STATUS)
+                                    .leadOutcomeStatus("Open")
+                                    .enquiryType("Product Enquiry")
+                                    .enquiryStatus("Pending")
+                                    .inquiryDate(inquiryLocalDate)
+                                    .leadCreatedDate(createdLocalDateTime)
+                                    .createdBy("IndiaMART Integration")
+                                    .updatedBy("IndiaMART Integration")
                                     .userIdFk(config.getUserIdFk())
-                                    .leadAssignedMember(config.getAutoAssignUserId()) // Auto assignment!
+                                    .leadAssignedMember(config.getAutoAssignUserId())
                                     .build();
 
                             leadRepository.save(lead);
@@ -127,5 +197,82 @@ public class IndiamartIntegrationService {
             configRepository.save(config);
             throw new RuntimeException(e.getMessage(), e);
         }
+    }
+
+    @jakarta.annotation.PostConstruct
+    public void repairExistingIndiamartLeads() {
+        try {
+            List<Lead> allLeads = leadRepository.findAll();
+            boolean changed = false;
+            for (Lead lead : allLeads) {
+                boolean leadModified = false;
+                
+                // Fix leadStatus if it's "New" or "None" or null
+                if (lead.getLeadStatus() == null || lead.getLeadStatus().isBlank() || "New".equalsIgnoreCase(lead.getLeadStatus()) || "None".equalsIgnoreCase(lead.getLeadStatus())) {
+                    lead.setLeadStatus("New Lead");
+                    leadModified = true;
+                }
+
+                // Fix companyContactPersonName if null/blank
+                if ((lead.getCompanyContactPersonName() == null || lead.getCompanyContactPersonName().isBlank() || "-".equals(lead.getCompanyContactPersonName()))
+                        && lead.getLeadFirstName() != null && !lead.getLeadFirstName().isBlank()) {
+                    lead.setCompanyContactPersonName(lead.getLeadFirstName());
+                    leadModified = true;
+                }
+
+                // Fix leadOrganisationName if null/blank
+                if ((lead.getLeadOrganisationName() == null || lead.getLeadOrganisationName().isBlank() || "-".equals(lead.getLeadOrganisationName()))
+                        && lead.getCompanyContactPersonName() != null && !lead.getCompanyContactPersonName().isBlank()) {
+                    lead.setLeadOrganisationName(lead.getCompanyContactPersonName());
+                    leadModified = true;
+                }
+
+                // Fix enquiryDescription if null/blank or contains %28 / <br>
+                String currentDesc = lead.getEnquiryDescription();
+                if ((currentDesc == null || currentDesc.isBlank() || "-".equals(currentDesc))
+                        && lead.getLeadReason() != null && !lead.getLeadReason().isBlank()) {
+                    currentDesc = lead.getLeadReason();
+                }
+                if (currentDesc != null && !currentDesc.isBlank()) {
+                    String cleaned = cleanText(currentDesc);
+                    if (!cleaned.equals(currentDesc)) {
+                        lead.setEnquiryDescription(cleaned);
+                        lead.setLeadReason(cleaned);
+                        leadModified = true;
+                    }
+                }
+
+                // Fix leadSource if "India MART" or "Indiamart"
+                if ("India MART".equalsIgnoreCase(lead.getLeadSource()) || "Indiamart".equalsIgnoreCase(lead.getLeadSource())) {
+                    lead.setLeadSource("IndiaMART");
+                    leadModified = true;
+                }
+
+                if (leadModified) {
+                    leadRepository.save(lead);
+                    changed = true;
+                }
+            }
+            if (changed) {
+                log.info("Successfully repaired existing IndiaMART leads in database.");
+            }
+        } catch (Exception e) {
+            log.error("Error repairing existing IndiaMART leads: {}", e.getMessage());
+        }
+    }
+
+    private String cleanText(String raw) {
+        if (raw == null || raw.isBlank()) return "";
+        String text = raw.trim();
+        try {
+            text = java.net.URLDecoder.decode(text, java.nio.charset.StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            // ignore
+        }
+        text = text.replaceAll("(?i)<br\\s*/?>", "\n");
+        text = text.replaceAll("(?i)&nbsp;", " ");
+        text = text.replaceAll("<[^>]*>", "");
+        text = text.replaceAll("\n\\s*\n", "\n");
+        return text.trim();
     }
 }

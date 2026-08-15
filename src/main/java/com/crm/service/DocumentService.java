@@ -40,13 +40,11 @@ public class DocumentService {
             List<NegotiationRevision> revisions = negotiationRevisionRepository
                     .findByQuotationNo(quotationNo);
             
-            if (revisions.isEmpty()) {
-                throw new ResourceNotFoundException(
-                        "Negotiation Revision not found with quotation number: " + quotationNo);
+            NegotiationRevision negotiationRevision = null;
+            if (!revisions.isEmpty()) {
+                negotiationRevision = revisions.get(0);
+                log.info("Using revision ID: {} for quotation: {}", negotiationRevision.getId(), quotationNo);
             }
-            
-            NegotiationRevision negotiationRevision = revisions.get(0);
-            log.info("Using revision ID: {} for quotation: {}", negotiationRevision.getId(), quotationNo);
 
             List<Document> savedDocuments = new ArrayList<>();
 
@@ -72,6 +70,7 @@ public class DocumentService {
                             .fileSize(file.getSize())
                             .fileType(file.getContentType())
                             .uploadedDate(LocalDateTime.now())
+                            .negotiationRevision(negotiationRevision)
                             .build();
                     
                     savedDocuments.add(document);
