@@ -1374,7 +1374,12 @@ public class LeadService {
             contactName = ((lead.getLeadFirstName() != null ? lead.getLeadFirstName() : "") + " " +
                           (lead.getLeadLastName() != null ? lead.getLeadLastName() : "")).trim();
         }
-        if (contactName.isBlank()) return;
+        if (contactName.isBlank()) {
+            contactName = lead.getLeadOrganisationName();
+        }
+        if (contactName == null || contactName.isBlank()) {
+            contactName = "Contact for Lead #" + lead.getLeadId();
+        }
 
         Long userId = lead.getUserIdFk() != null ? lead.getUserIdFk() : 1L;
         Contact contact = null;
@@ -1404,7 +1409,12 @@ public class LeadService {
 
     private void syncOrganizationFromLead(Lead lead) {
         String orgName = lead.getLeadOrganisationName();
-        if (orgName == null || orgName.isBlank()) return;
+        if (orgName == null || orgName.isBlank()) {
+            orgName = lead.getLeadTitle();
+        }
+        if (orgName == null || orgName.isBlank()) {
+            orgName = "Organization for Lead #" + lead.getLeadId();
+        }
 
         Long userId = lead.getUserIdFk() != null ? lead.getUserIdFk() : 1L;
         Organization org = null;
@@ -1430,33 +1440,31 @@ public class LeadService {
     }
 
     private void syncOpportunityFromLead(Lead lead) {
-        boolean isQualified = "Qualified".equalsIgnoreCase(lead.getLeadStatus()) || "Qualified".equalsIgnoreCase(lead.getLeadOutcomeStatus());
-        boolean hasQuotation = (lead.getQuotationNumber() != null && !lead.getQuotationNumber().isBlank()) ||
-                               (lead.getQuotationAmount() != null && lead.getQuotationAmount().compareTo(java.math.BigDecimal.ZERO) > 0);
-
-        if (!isQualified && !hasQuotation) return;
-
         List<Opportunity> existing = opportunityRepository.findByLeadIdFk(lead.getLeadId());
         Opportunity opp = (existing != null && !existing.isEmpty()) ? existing.get(0) : new Opportunity();
 
+        String orgOrTitle = lead.getLeadOrganisationName() != null && !lead.getLeadOrganisationName().isBlank()
+                ? lead.getLeadOrganisationName()
+                : (lead.getLeadTitle() != null ? lead.getLeadTitle() : "Lead #" + lead.getLeadId());
+
         String title = lead.getQuotationNumber() != null && !lead.getQuotationNumber().isBlank()
                 ? lead.getQuotationNumber()
-                : (lead.getLeadTitle() != null ? lead.getLeadTitle() : "Opportunity for " + lead.getLeadOrganisationName());
+                : ("Deal for " + orgOrTitle);
 
-        opp.setOppName(lead.getLeadOrganisationName() != null ? lead.getLeadOrganisationName() : "Deal - Lead #" + lead.getLeadId());
+        opp.setOppName(orgOrTitle);
         opp.setOppTitle(title);
 
         String oppStatus = "New";
         if ("Won".equalsIgnoreCase(lead.getLeadOutcomeStatus())) oppStatus = "Won";
         else if ("Lost".equalsIgnoreCase(lead.getLeadOutcomeStatus())) oppStatus = "Lost";
         else if ("Negotiation".equalsIgnoreCase(lead.getLeadOutcomeStatus()) || "Negotiation".equalsIgnoreCase(lead.getLeadStatus())) oppStatus = "Negotiation";
-        else if (hasQuotation) oppStatus = "Proposal";
-        else if (isQualified) oppStatus = "Qualified";
+        else if (lead.getQuotationNumber() != null || (lead.getQuotationAmount() != null && lead.getQuotationAmount().compareTo(java.math.BigDecimal.ZERO) > 0)) oppStatus = "Proposal";
+        else if ("Qualified".equalsIgnoreCase(lead.getLeadStatus()) || "Qualified".equalsIgnoreCase(lead.getLeadOutcomeStatus())) oppStatus = "Qualified";
 
         opp.setOppStatus(oppStatus);
         opp.setOppAmount(lead.getQuotationAmount() != null ? lead.getQuotationAmount() : java.math.BigDecimal.ZERO);
         opp.setOppForcastCloseDate(lead.getQuotationDate() != null ? lead.getQuotationDate().plusDays(30) : LocalDate.now().plusDays(30));
-        opp.setOppDescription(lead.getEnquiryDescription());
+        opp.setOppDescription(lead.getEnquiryDescription() != null ? lead.getEnquiryDescription() : lead.getLeadReason());
         opp.setLeadIdFk(lead.getLeadId());
         opp.setUserIdFk(lead.getUserIdFk() != null ? lead.getUserIdFk() : 1L);
 
