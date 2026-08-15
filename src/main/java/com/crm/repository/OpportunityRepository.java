@@ -14,6 +14,7 @@ public interface OpportunityRepository extends JpaRepository<Opportunity, Long>,
     List<Opportunity> findByUserIdFk(Long userIdFk);
     List<Opportunity> findByUserIdFkIn(List<Long> userIds);
     List<Opportunity> findByOppStatus(String oppStatus);
+    List<Opportunity> findByLeadIdFk(Long leadIdFk);
     void deleteByLeadIdFk(Long leadIdFk);
     long countByOppStatus(String oppStatus);
     long countByUserIdFk(Long userIdFk);
