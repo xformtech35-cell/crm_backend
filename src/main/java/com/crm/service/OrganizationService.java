@@ -36,15 +36,26 @@ public class OrganizationService {
     private final NegotiationRevisionRepository negotiationRevisionRepository;
     private final DocumentRepository documentRepository;
     private final ContactRepository contactRepository;
-    private final TaskTimeLogRepository taskTimeLogRepository;
+    private final LeadService leadService;
 
     public List<Organization> getAllOrganizations(Long userId, String role) {
         if (authUtil.isSuperAdmin(role)) {
             return organizationRepository.findAll();
         }
         User user = userRepository.findById(userId).orElse(null);
-        Long companyId = authUtil.getCompanyAdminId(user);
-        return organizationRepository.findByUserIdFk(companyId != null ? companyId : userId);
+        String scopeMode = authUtil.resolveDataScopeMode(user, "ORGANIZATIONS");
+
+        if ("ALL_DATA".equals(scopeMode)) {
+            List<Long> companyUserIds = leadService.getCompanyUserIds(userId, role);
+            return organizationRepository.findByUserIdFkIn(companyUserIds);
+        }
+        if ("TEAM_DATA".equals(scopeMode)) {
+            List<Long> teamUserIds = authUtil.getTeamLeadMemberUserIds(user);
+            if (teamUserIds.isEmpty()) teamUserIds = List.of(-1L);
+            return organizationRepository.findByUserIdFkIn(teamUserIds);
+        }
+        List<Long> companyUserIds = leadService.getCompanyUserIds(userId, role);
+        return organizationRepository.findByUserIdFkIn(companyUserIds);
     }
 
     public Organization getById(Long id) {

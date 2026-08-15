@@ -35,6 +35,7 @@ public class DataSeedService {
     private final DataScopeConfigRepository dataScopeConfigRepository;
     private final TeamMemberRepository teamMemberRepository;
     private final CreateTeamRepository createTeamRepository;
+    private final LeadService leadService;
 
     @PersistenceContext
     private EntityManager em;
@@ -61,6 +62,9 @@ public class DataSeedService {
 
             // Step 4: Back-populate TeamMember.team_id_fk
             backPopulateTeamIdFk();
+
+            // Step 5: Sync all historical Leads to Contacts, Organizations, and Opportunities
+            leadService.syncAllExistingLeadsToEntities();
 
         } catch (Exception e) {
             log.error("DataSeedService error during seed operations: {}", e.getMessage(), e);
