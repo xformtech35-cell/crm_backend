@@ -11,4 +11,7 @@ import java.util.List;
 public interface ContactRepository extends JpaRepository<Contact, Long>, JpaSpecificationExecutor<Contact> {
     List<Contact> findByUserIdFk(Long userIdFk);
     List<Contact> findByUserIdFkIn(List<Long> userIds);
+    List<Contact> findByContactNameAndUserIdFk(String contactName, Long userIdFk);
+    List<Contact> findByContactMobileNoAndUserIdFk(String contactMobileNo, Long userIdFk);
+    List<Contact> findByContactEmailAndUserIdFk(String contactEmail, Long userIdFk);
 }

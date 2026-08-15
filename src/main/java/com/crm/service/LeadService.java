@@ -42,7 +42,11 @@ import com.crm.repository.LeadScoreRepository;
 import com.crm.repository.NegotiationRepository;
 import com.crm.repository.NegotiationRevisionRepository;
 import com.crm.repository.OpportunityRepository;
+import com.crm.repository.ContactRepository;
+import com.crm.repository.OrganizationRepository;
 import com.crm.repository.TaskRepository;
+import com.crm.entity.Contact;
+import com.crm.entity.Organization;
 import com.crm.repository.TeamMemberRepository;
 import com.crm.repository.UserRepository;
 import com.crm.entity.TeamMember;
@@ -82,6 +86,8 @@ public class LeadService {
     private final NegotiationRevisionRepository negotiationRevisionRepository;
     private final NegotiationRepository negotiationRepository;
     private final DocumentRepository documentRepository;
+    private final ContactRepository contactRepository;
+    private final OrganizationRepository organizationRepository;
 
 
     // public LeadService() {
@@ -287,6 +293,7 @@ public class LeadService {
         lead.setUploadDocument2(fileUploadUtil.upload(doc2));
         lead.setUploadDocument3(fileUploadUtil.upload(doc3));
         Lead saved = leadRepository.save(lead);
+        syncRelatedEntities(saved);
         if ("Qualified".equals(saved.getEnquiryType())) {
             createSalesTaskIfNotExist(saved, saved.getUserIdFk() != null ? saved.getUserIdFk() : userId);
         }
@@ -405,6 +412,7 @@ public class LeadService {
 
         // Save Lead
         Lead saved = leadRepository.save(lead);
+        syncRelatedEntities(saved);
 
         // Sync Negotiation & Revision History (Snapshot NEW state, e.g. R1)
         syncNegotiationForLead(saved);
@@ -1346,5 +1354,129 @@ public class LeadService {
         // lead.setUpdatedAt(LocalDateTime.now());
 
         return leadRepository.save(lead);
+    }
+
+    @Transactional
+    public void syncRelatedEntities(Lead lead) {
+        if (lead == null) return;
+        try {
+            syncContactFromLead(lead);
+            syncOrganizationFromLead(lead);
+            syncOpportunityFromLead(lead);
+        } catch (Exception e) {
+            log.error("Error syncing related entities for lead ID {}: {}", lead.getLeadId(), e.getMessage());
+        }
+    }
+
+    private void syncContactFromLead(Lead lead) {
+        String contactName = lead.getCompanyContactPersonName();
+        if (contactName == null || contactName.isBlank()) {
+            contactName = ((lead.getLeadFirstName() != null ? lead.getLeadFirstName() : "") + " " +
+                          (lead.getLeadLastName() != null ? lead.getLeadLastName() : "")).trim();
+        }
+        if (contactName.isBlank()) return;
+
+        Long userId = lead.getUserIdFk() != null ? lead.getUserIdFk() : 1L;
+        Contact contact = null;
+        List<Contact> existing = contactRepository.findByContactNameAndUserIdFk(contactName, userId);
+        if (existing != null && !existing.isEmpty()) {
+            contact = existing.get(0);
+        } else if (lead.getLeadMobileNo() != null && !lead.getLeadMobileNo().isBlank()) {
+            List<Contact> byMobile = contactRepository.findByContactMobileNoAndUserIdFk(lead.getLeadMobileNo(), userId);
+            if (byMobile != null && !byMobile.isEmpty()) contact = byMobile.get(0);
+        }
+
+        if (contact == null) {
+            contact = new Contact();
+            contact.setContactName(contactName);
+            contact.setUserIdFk(userId);
+        }
+
+        if (lead.getLeadMobileNo() != null && !lead.getLeadMobileNo().isBlank()) contact.setContactMobileNo(lead.getLeadMobileNo());
+        if (lead.getLeadEmail() != null && !lead.getLeadEmail().isBlank()) contact.setContactEmail(lead.getLeadEmail());
+        if (lead.getLeadAddress() != null && !lead.getLeadAddress().isBlank()) contact.setContactAddress(lead.getLeadAddress());
+        if (lead.getLeadCity() != null && !lead.getLeadCity().isBlank()) contact.setContactCity(lead.getLeadCity());
+        if (lead.getLeadState() != null && !lead.getLeadState().isBlank()) contact.setContactState(lead.getLeadState());
+        if (lead.getLeadCountry() != null && !lead.getLeadCountry().isBlank()) contact.setContactCountry(lead.getLeadCountry());
+
+        contactRepository.save(contact);
+    }
+
+    private void syncOrganizationFromLead(Lead lead) {
+        String orgName = lead.getLeadOrganisationName();
+        if (orgName == null || orgName.isBlank()) return;
+
+        Long userId = lead.getUserIdFk() != null ? lead.getUserIdFk() : 1L;
+        Organization org = null;
+        List<Organization> existing = organizationRepository.findByOrganizationNameAndUserIdFk(orgName, userId);
+        if (existing != null && !existing.isEmpty()) {
+            org = existing.get(0);
+        }
+
+        if (org == null) {
+            org = new Organization();
+            org.setOrganizationName(orgName);
+            org.setUserIdFk(userId);
+        }
+
+        if (lead.getLeadMobileNo() != null && !lead.getLeadMobileNo().isBlank()) org.setOrganizationMoblieNo(lead.getLeadMobileNo());
+        if (lead.getLeadEmail() != null && !lead.getLeadEmail().isBlank()) org.setOrganizationEmail(lead.getLeadEmail());
+        if (lead.getLeadAddress() != null && !lead.getLeadAddress().isBlank()) org.setOrganizationAddress(lead.getLeadAddress());
+        if (lead.getLeadCity() != null && !lead.getLeadCity().isBlank()) org.setOrganizationCity(lead.getLeadCity());
+        if (lead.getLeadState() != null && !lead.getLeadState().isBlank()) org.setOrganizationState(lead.getLeadState());
+        if (lead.getLeadCountry() != null && !lead.getLeadCountry().isBlank()) org.setOrganizationCountry(lead.getLeadCountry());
+
+        organizationRepository.save(org);
+    }
+
+    private void syncOpportunityFromLead(Lead lead) {
+        boolean isQualified = "Qualified".equalsIgnoreCase(lead.getLeadStatus()) || "Qualified".equalsIgnoreCase(lead.getLeadOutcomeStatus());
+        boolean hasQuotation = (lead.getQuotationNumber() != null && !lead.getQuotationNumber().isBlank()) ||
+                               (lead.getQuotationAmount() != null && lead.getQuotationAmount().compareTo(java.math.BigDecimal.ZERO) > 0);
+
+        if (!isQualified && !hasQuotation) return;
+
+        List<Opportunity> existing = opportunityRepository.findByLeadIdFk(lead.getLeadId());
+        Opportunity opp = (existing != null && !existing.isEmpty()) ? existing.get(0) : new Opportunity();
+
+        String title = lead.getQuotationNumber() != null && !lead.getQuotationNumber().isBlank()
+                ? lead.getQuotationNumber()
+                : (lead.getLeadTitle() != null ? lead.getLeadTitle() : "Opportunity for " + lead.getLeadOrganisationName());
+
+        opp.setOppName(lead.getLeadOrganisationName() != null ? lead.getLeadOrganisationName() : "Deal - Lead #" + lead.getLeadId());
+        opp.setOppTitle(title);
+
+        String oppStatus = "New";
+        if ("Won".equalsIgnoreCase(lead.getLeadOutcomeStatus())) oppStatus = "Won";
+        else if ("Lost".equalsIgnoreCase(lead.getLeadOutcomeStatus())) oppStatus = "Lost";
+        else if ("Negotiation".equalsIgnoreCase(lead.getLeadOutcomeStatus()) || "Negotiation".equalsIgnoreCase(lead.getLeadStatus())) oppStatus = "Negotiation";
+        else if (hasQuotation) oppStatus = "Proposal";
+        else if (isQualified) oppStatus = "Qualified";
+
+        opp.setOppStatus(oppStatus);
+        opp.setOppAmount(lead.getQuotationAmount() != null ? lead.getQuotationAmount() : java.math.BigDecimal.ZERO);
+        opp.setOppForcastCloseDate(lead.getQuotationDate() != null ? lead.getQuotationDate().plusDays(30) : LocalDate.now().plusDays(30));
+        opp.setOppDescription(lead.getEnquiryDescription());
+        opp.setLeadIdFk(lead.getLeadId());
+        opp.setUserIdFk(lead.getUserIdFk() != null ? lead.getUserIdFk() : 1L);
+
+        opportunityRepository.save(opp);
+    }
+
+    public void syncAllExistingLeadsToEntities() {
+        new Thread(() -> {
+            log.info("Starting background bulk sync of all historical leads to Contacts, Organizations, and Opportunities...");
+            List<Lead> leads = leadRepository.findAll();
+            int synced = 0;
+            for (Lead l : leads) {
+                try {
+                    syncRelatedEntities(l);
+                    synced++;
+                } catch (Exception e) {
+                    log.error("Failed to sync lead ID {}: {}", l.getLeadId(), e.getMessage());
+                }
+            }
+            log.info("Successfully finished background bulk sync of {} leads into Contacts, Organizations, and Opportunities!", synced);
+        }).start();
     }
 }

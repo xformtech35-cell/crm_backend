@@ -130,6 +130,12 @@ public class LeadController {
         return ResponseEntity.ok(ApiResponse.success("Lead deleted", null));
     }
 
+    @PostMapping("/sync-all-entities")
+    public ResponseEntity<ApiResponse<Void>> syncAllEntities() {
+        leadService.syncAllExistingLeadsToEntities();
+        return ResponseEntity.ok(ApiResponse.success("Synced all leads to Contacts, Organizations, and Opportunities", null));
+    }
+
     @PatchMapping("/{id}/status")
     public ResponseEntity<ApiResponse<Lead>> updateStatus(@PathVariable Long id,
             @RequestBody Map<String, String> body, Authentication auth) {
