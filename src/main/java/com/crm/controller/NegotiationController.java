@@ -150,9 +150,11 @@ public class NegotiationController {
                     leadRef = l.getLeadRef();
                     enquiryDescription = l.getEnquiryDescription();
 
-                    // Latest quotation number from Lead
+                    // Latest quotation number from Lead or LeadRef fallback
                     if (l.getQuotationNumber() != null && !l.getQuotationNumber().isBlank()) {
                         quotationNo = l.getQuotationNumber();
+                    } else if ((quotationNo == null || quotationNo.isBlank()) && l.getLeadRef() != null && !l.getLeadRef().isBlank()) {
+                        quotationNo = l.getLeadRef();
                     }
 
                     if (l.getQuotationDate() != null) {
@@ -169,9 +171,20 @@ public class NegotiationController {
                 }
             }
 
+            // Sync back quotationNo if blank in negotiation record
+            if ((n.getQuotationNo() == null || n.getQuotationNo().isBlank()) && quotationNo != null && !quotationNo.isBlank()) {
+                try {
+                    n.setQuotationNo(quotationNo);
+                    negotiationRepository.save(n);
+                } catch (Exception ex) {
+                    log.warn("Failed to persist quotationNo for negotiation {}: {}", n.getId(), ex.getMessage());
+                }
+            }
+
             map.put("id", n.getId());
             map.put("leadIdFk", n.getLeadIdFk());
             map.put("negotiationName", n.getNegotiationName());
+            map.put("quotationNo", quotationNo);
             String revNo = n.getQuotationRevision();
             if (revNo == null || revNo.isBlank()) {
                 revNo = "R0";
