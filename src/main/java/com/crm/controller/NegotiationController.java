@@ -467,11 +467,10 @@ public ResponseEntity<ApiResponse<Lead>> getDetails(@PathVariable Long id) {
 
     @org.springframework.web.bind.annotation.DeleteMapping("/{id}")
     public ResponseEntity<ApiResponse<Void>> delete(@PathVariable Long id) {
-        Negotiation negotiation = negotiationRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Negotiation not found"));
-        negotiationRepository.delete(negotiation);
-        return ResponseEntity.ok(ApiResponse.success("Negotiation deleted", null));
+        negotiationService.deleteNegotiation(id);
+        return ResponseEntity.ok(ApiResponse.success("Negotiation moved to trash", null));
     }
+
 
     
     
@@ -602,11 +601,6 @@ public ResponseEntity<ApiResponse<Lead>> getDetails(@PathVariable Long id) {
             default -> "application/octet-stream";
         };
     }
-
-    @DeleteMapping("/{id}")
-    public ResponseEntity<ApiResponse<Void>> deleteNegotiation(@PathVariable Long id) {
-        negotiationService.deleteNegotiation(id);
-        return ResponseEntity.ok(ApiResponse.success("Negotiation moved to trash", null));
-    }
 }
+
 
