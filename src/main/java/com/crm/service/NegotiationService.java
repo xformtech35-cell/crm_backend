@@ -103,5 +103,13 @@ public class NegotiationService {
         }
     }
 
-
-}
+    @Transactional
+    public void deleteNegotiation(Long id) {
+        log.info("Soft deleting negotiation with id: {}", id);
+        Negotiation negotiation = negotiationRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Negotiation not found with id: " + id));
+        negotiation.setIsDeleted(true);
+        negotiation.setDeletedAt(java.time.LocalDateTime.now());
+        negotiationRepository.save(negotiation);
+    }
+}

@@ -113,6 +113,13 @@ public class CalendarEvent {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
+    @Column(name = "is_deleted")
+    @Builder.Default
+    private Boolean isDeleted = false;
+
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
+
     @PrePersist
     protected void onCreate() {
         this.createdAt = LocalDateTime.now();
@@ -120,6 +127,7 @@ public class CalendarEvent {
         if (this.status == null) this.status = "UPCOMING";
         if (this.priority == null) this.priority = "MEDIUM";
         if (this.eventType == null) this.eventType = "REMINDER";
+        if (this.isDeleted == null) this.isDeleted = false;
     }
 
     @PreUpdate
@@ -127,3 +135,4 @@ public class CalendarEvent {
         this.updatedAt = LocalDateTime.now();
     }
 }
+

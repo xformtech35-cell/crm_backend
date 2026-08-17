@@ -185,14 +185,19 @@ public class CalendarEventService {
             for (CalendarEvent se : series) {
                 se.setStatus("CANCELLED");
                 se.setCancelledAt(LocalDateTime.now());
+                se.setIsDeleted(true);
+                se.setDeletedAt(LocalDateTime.now());
                 calendarEventRepository.save(se);
             }
         } else {
             event.setStatus("CANCELLED");
             event.setCancelledAt(LocalDateTime.now());
+            event.setIsDeleted(true);
+            event.setDeletedAt(LocalDateTime.now());
             calendarEventRepository.save(event);
         }
     }
+
 
     @Transactional
     public CalendarEvent snoozeEvent(Long id, int minutes, User currentUser) {

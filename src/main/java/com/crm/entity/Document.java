@@ -32,13 +32,18 @@ public class Document {
     @Column(name = "file_size")
     private Long fileSize;
 
-    @Column(name = "file_type", length = 100)
-    private String fileType;
-
     @Column(name = "uploaded_date")
     private LocalDateTime uploadedDate;
 
     @ManyToOne
     @JoinColumn(name = "negotiation_revision_id")
     private NegotiationRevision negotiationRevision;
+
+    @Column(name = "is_deleted")
+    @Builder.Default
+    private Boolean isDeleted = false;
+
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
 }
+

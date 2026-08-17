@@ -227,6 +227,25 @@ public class DocumentService {
     log.info("Extracted relative path: {} from: {}", relativePath, fileUrl);
     return relativePath;
 }
+    @Transactional
+    public void deleteDocument(Long documentId) {
+        Document doc = documentRepository.findById(documentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Document not found with id: " + documentId));
+        doc.setIsDeleted(true);
+        doc.setDeletedAt(LocalDateTime.now());
+        documentRepository.save(doc);
+    }
+
+    @Transactional
+    public void deleteAllDocumentsByQuotationNo(String quotationNo) {
+        List<Document> docs = documentRepository.findByQuotationNo(quotationNo);
+        for (Document doc : docs) {
+            doc.setIsDeleted(true);
+            doc.setDeletedAt(LocalDateTime.now());
+        }
+        documentRepository.saveAll(docs);
+    }
+
     private DocumentResponse mapToDocumentResponse(Document document) {
         return DocumentResponse.builder()
                 .id(document.getId())
@@ -238,4 +257,4 @@ public class DocumentService {
                 .uploadedDate(document.getUploadedDate())
                 .build();
     }
-}
+}

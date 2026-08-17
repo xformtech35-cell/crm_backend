@@ -146,6 +146,48 @@ public class TrashService {
                 "tasks",
                 companyAdminId);
 
+        // 7. Documents
+        fetchModuleTrash(items,
+                "crm_documents",
+                "id",
+                "COALESCE(NULLIF(TRIM(file_name), ''), NULLIF(TRIM(quotation_no), ''), CONCAT('Document #', id))",
+                "NULL",
+                "NULL",
+                "NULL",
+                "file_type",
+                "CONCAT(COALESCE(quotation_no, ''), ' | Size: ', COALESCE(CAST(file_size AS CHAR), '0'), ' B')",
+                "Document",
+                "documents",
+                null);
+
+        // 8. Negotiations
+        fetchModuleTrash(items,
+                "crm_negotiation",
+                "id",
+                "COALESCE(NULLIF(TRIM(negotiation_title), ''), NULLIF(TRIM(negotiation_name), ''), NULLIF(TRIM(quotation_no), ''), CONCAT('Negotiation #', id))",
+                "NULL",
+                "NULL",
+                "NULL",
+                "negotiation_status",
+                "CONCAT('Qtn: ', COALESCE(quotation_no, ''), ' (₹', COALESCE(CAST(quotation_amount AS CHAR), '0'), ')')",
+                "Negotiation",
+                "negotiations",
+                companyAdminId);
+
+        // 9. Calendar Events
+        fetchModuleTrash(items,
+                "crm_calendar_events",
+                "id",
+                "COALESCE(NULLIF(TRIM(title), ''), CONCAT('Event #', id))",
+                "NULL",
+                "NULL",
+                "location",
+                "status",
+                "CONCAT(COALESCE(event_type, ''), ' | Priority: ', COALESCE(priority, ''))",
+                "Calendar Event",
+                "events",
+                companyAdminId);
+
         return items;
     }
 
@@ -239,6 +281,9 @@ public class TrashService {
             case "organizations" -> "crm_xformsales_organization";
             case "projects" -> "crm_xformsales_project";
             case "tasks" -> "crm_xformsales_task";
+            case "documents" -> "crm_documents";
+            case "negotiations" -> "crm_negotiation";
+            case "events" -> "crm_calendar_events";
             default -> throw new IllegalArgumentException("Unknown module key: " + moduleKey);
         };
     }
@@ -251,7 +296,11 @@ public class TrashService {
             case "organizations" -> "organization_id";
             case "projects" -> "project_id";
             case "tasks" -> "task_id";
+            case "documents" -> "id";
+            case "negotiations" -> "id";
+            case "events" -> "id";
             default -> throw new IllegalArgumentException("Unknown module key: " + moduleKey);
         };
     }
 }
+

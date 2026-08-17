@@ -50,4 +50,11 @@ public class Negotiation {
 
     @Column(name = "document_url", length = 500)
     private String documentUrl;  // Stores the full URL to access the document
-}
+
+    @Column(name = "is_deleted")
+    @Builder.Default
+    private Boolean isDeleted = false;
+
+    @Column(name = "deleted_at")
+    private java.time.LocalDateTime deletedAt;
+}

@@ -602,5 +602,11 @@ public ResponseEntity<ApiResponse<Lead>> getDetails(@PathVariable Long id) {
             default -> "application/octet-stream";
         };
     }
-    
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<ApiResponse<Void>> deleteNegotiation(@PathVariable Long id) {
+        negotiationService.deleteNegotiation(id);
+        return ResponseEntity.ok(ApiResponse.success("Negotiation moved to trash", null));
+    }
 }
+
