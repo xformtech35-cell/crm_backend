@@ -63,30 +63,104 @@ public class TrashService {
         List<TrashItemResponse> items = new ArrayList<>();
 
         // 1. Leads
-        fetchModuleTrash(items, "crm_xformsales_lead", "lead_id", "CONCAT(COALESCE(lead_first_name, ''), ' ', COALESCE(lead_last_name, ''))", "Lead", "leads", companyAdminId);
+        fetchModuleTrash(items,
+                "crm_xformsales_lead",
+                "lead_id",
+                "COALESCE(NULLIF(TRIM(CONCAT(COALESCE(lead_first_name, ''), ' ', COALESCE(lead_last_name, ''))), ''), NULLIF(TRIM(company_contact_person_name), ''), NULLIF(TRIM(lead_organisation_name), ''), NULLIF(TRIM(lead_title), ''), NULLIF(TRIM(lead_ref), ''), CONCAT('Lead #', lead_id))",
+                "lead_email",
+                "COALESCE(NULLIF(TRIM(lead_mobile_no), ''), NULLIF(TRIM(lead_phone_no), ''))",
+                "lead_organisation_name",
+                "lead_status",
+                "COALESCE(NULLIF(TRIM(lead_title), ''), NULLIF(TRIM(lead_ref), ''), NULLIF(TRIM(company_contact_person_name), ''))",
+                "Lead",
+                "leads",
+                companyAdminId);
 
         // 2. Contacts
-        fetchModuleTrash(items, "crm_xformsales_contact", "contact_id", "contact_name", "Contact", "contacts", companyAdminId);
+        fetchModuleTrash(items,
+                "crm_xformsales_contact",
+                "contact_id",
+                "COALESCE(NULLIF(TRIM(contact_name), ''), CONCAT('Contact #', contact_id))",
+                "contact_email",
+                "contact_mobile_no",
+                "NULL",
+                "follow_task_category",
+                "COALESCE(NULLIF(TRIM(contact_city), ''), NULLIF(TRIM(contact_address), ''))",
+                "Contact",
+                "contacts",
+                companyAdminId);
 
         // 3. Opportunities
-        fetchModuleTrash(items, "crm_xformsales_opportunity", "opp_id", "COALESCE(opp_title, opp_name)", "Opportunity", "opportunities", companyAdminId);
+        fetchModuleTrash(items,
+                "crm_xformsales_opportunity",
+                "opp_id",
+                "COALESCE(NULLIF(TRIM(opp_title), ''), NULLIF(TRIM(opp_name), ''), CONCAT('Opportunity #', opp_id))",
+                "NULL",
+                "NULL",
+                "NULL",
+                "opp_status",
+                "CONCAT('Value: ₹', COALESCE(CAST(opp_amount AS CHAR), '0'))",
+                "Opportunity",
+                "opportunities",
+                companyAdminId);
 
         // 4. Organizations
-        fetchModuleTrash(items, "crm_xformsales_organization", "organization_id", "organization_name", "Organization", "organizations", companyAdminId);
+        fetchModuleTrash(items,
+                "crm_xformsales_organization",
+                "organization_id",
+                "COALESCE(NULLIF(TRIM(organization_name), ''), CONCAT('Organization #', organization_id))",
+                "organization_email",
+                "organization_moblie_no",
+                "organization_name",
+                "NULL",
+                "COALESCE(NULLIF(TRIM(organization_city), ''), NULLIF(TRIM(organization_address), ''))",
+                "Organization",
+                "organizations",
+                companyAdminId);
 
         // 5. Projects
-        fetchModuleTrash(items, "crm_xformsales_project", "project_id", "project_name", "Project", "projects", companyAdminId);
+        fetchModuleTrash(items,
+                "crm_xformsales_project",
+                "project_id",
+                "COALESCE(NULLIF(TRIM(project_name), ''), NULLIF(TRIM(project_code), ''), CONCAT('Project #', project_id))",
+                "NULL",
+                "NULL",
+                "organisation_name",
+                "project_status",
+                "NULLIF(TRIM(project_code), '')",
+                "Project",
+                "projects",
+                companyAdminId);
 
         // 6. Tasks
-        fetchModuleTrash(items, "crm_xformsales_task", "task_id", "task_name", "Task", "tasks", companyAdminId);
+        fetchModuleTrash(items,
+                "crm_xformsales_task",
+                "task_id",
+                "COALESCE(NULLIF(TRIM(task_name), ''), CONCAT('Task #', task_id))",
+                "task_email",
+                "task_phone",
+                "NULL",
+                "task_priority",
+                "COALESCE(NULLIF(TRIM(task_related_to), ''), NULLIF(TRIM(task_due_date), ''))",
+                "Task",
+                "tasks",
+                companyAdminId);
 
         return items;
     }
 
     @SuppressWarnings("unchecked")
-    private void fetchModuleTrash(List<TrashItemResponse> list, String tableName, String idCol, String nameCol, String itemType, String moduleKey, Long companyAdminId) {
+    private void fetchModuleTrash(List<TrashItemResponse> list, String tableName, String idCol, String nameExpr, String emailExpr, String phoneExpr, String orgExpr, String statusExpr, String detailsExpr, String itemType, String moduleKey, Long companyAdminId) {
         try {
-            String sql = "SELECT " + idCol + ", " + nameCol + " AS item_name, deleted_at FROM " + tableName + " WHERE is_deleted = 1";
+            String sql = "SELECT " + idCol + ", " 
+                    + nameExpr + " AS item_name, " 
+                    + emailExpr + " AS item_email, " 
+                    + phoneExpr + " AS item_phone, " 
+                    + orgExpr + " AS item_org, " 
+                    + statusExpr + " AS item_status, " 
+                    + detailsExpr + " AS item_details, " 
+                    + "deleted_at FROM " + tableName + " WHERE is_deleted = 1";
+
             if (companyAdminId != null) {
                 sql += " AND (user_id_fk = " + companyAdminId + " OR user_id_fk IS NULL)";
             }
@@ -100,13 +174,24 @@ public class TrashService {
                 Long id = ((Number) row[0]).longValue();
                 String name = row[1] != null ? row[1].toString().trim() : itemType + " #" + id;
                 if (name.isBlank()) name = itemType + " #" + id;
-                String deletedAt = row[2] != null ? row[2].toString() : null;
+
+                String email = row[2] != null ? row[2].toString().trim() : null;
+                String phone = row[3] != null ? row[3].toString().trim() : null;
+                String organization = row[4] != null ? row[4].toString().trim() : null;
+                String status = row[5] != null ? row[5].toString().trim() : null;
+                String details = row[6] != null ? row[6].toString().trim() : null;
+                String deletedAt = row[7] != null ? row[7].toString() : null;
 
                 list.add(TrashItemResponse.builder()
                         .id(moduleKey + "_" + id)
                         .itemType(itemType)
                         .recordId(id)
                         .name(name)
+                        .email(email)
+                        .phone(phone)
+                        .organization(organization)
+                        .status(status)
+                        .details(details)
                         .deletedAt(deletedAt)
                         .moduleKey(moduleKey)
                         .build());

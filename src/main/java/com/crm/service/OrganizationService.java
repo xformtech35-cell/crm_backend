@@ -37,6 +37,7 @@ public class OrganizationService {
     private final DocumentRepository documentRepository;
     private final ContactRepository contactRepository;
     private final LeadService leadService;
+    private final TaskTimeLogRepository taskTimeLogRepository;
 
     public List<Organization> getAllOrganizations(Long userId, String role) {
         if (authUtil.isSuperAdmin(role)) {
@@ -77,87 +78,7 @@ public class OrganizationService {
     @Transactional
     public void delete(Long id) {
         Organization org = getById(id);
-        Long adminUserId = org.getUserIdFk();
-        
-        // Delete organization itself first
         organizationRepository.delete(org);
-
-        if (adminUserId != null) {
-            // 1. Delete Attendance records
-            List<Attendance> attendances = attendanceRepository.findByUserIdFk(adminUserId);
-            attendanceRepository.deleteAll(attendances);
-
-            // 2. Delete Integration Configs
-            List<IntegrationConfig> integrationConfigs = integrationConfigRepository.findByUserIdFk(adminUserId);
-            integrationConfigRepository.deleteAll(integrationConfigs);
-
-            // 3. Delete Data Scope Configs
-            List<DataScopeConfig> dataScopeConfigs = dataScopeConfigRepository.findByCompanyAdminIdFk(adminUserId);
-            dataScopeConfigRepository.deleteAll(dataScopeConfigs);
-
-            // 4. Delete Team Members and their login accounts (Users)
-            List<TeamMember> teamMembers = teamMemberRepository.findByUserIdFk(adminUserId);
-            for (TeamMember member : teamMembers) {
-                if (member.getTeamMemberEmail() != null) {
-                    userRepository.findByUserEmail(member.getTeamMemberEmail())
-                            .ifPresent(userRepository::delete);
-                }
-            }
-            teamMemberRepository.deleteAll(teamMembers);
-
-            // 5. Delete Teams
-            List<Team> teams = teamRepository.findByUserIdFk(adminUserId);
-            teamRepository.deleteAll(teams);
-
-            // 6. Delete Tasks and TaskTimeLogs
-            List<Task> tasks = taskRepository.findByUserIdFk(adminUserId);
-            for (Task task : tasks) {
-                List<TaskTimeLog> logs = taskTimeLogRepository.findByTaskId(task.getTaskId());
-                taskTimeLogRepository.deleteAll(logs);
-            }
-            taskRepository.deleteAll(tasks);
-
-            // 7. Delete Projects
-            List<Project> projects = projectRepository.findByUserIdFk(adminUserId);
-            projectRepository.deleteAll(projects);
-
-            // 8. Delete Opportunities
-            List<Opportunity> opps = opportunityRepository.findByUserIdFk(adminUserId);
-            opportunityRepository.deleteAll(opps);
-
-            // 9. Delete Contacts
-            List<Contact> contacts = contactRepository.findByUserIdFk(adminUserId);
-            contactRepository.deleteAll(contacts);
-
-            // 10. Delete Leads and their related entities (Negotiations, Notes, Reminders, Scores)
-            List<Lead> leads = leadRepository.findByUserIdFk(adminUserId);
-            for (Lead lead : leads) {
-                leadNoteRepository.deleteByLeadIdFk(lead.getLeadId());
-                leadReminderRepository.deleteByLeadIdFk(lead.getLeadId());
-                leadScoreRepository.findByLeadIdFk(lead.getLeadId())
-                        .ifPresent(leadScoreRepository::delete);
-
-                List<Negotiation> negotiations = negotiationRepository.findByLeadIdFk(lead.getLeadId());
-                for (Negotiation neg : negotiations) {
-                    List<NegotiationRevision> revisions = negotiationRevisionRepository.findByNegotiationIdOrderByUpdatedDateDesc(neg.getId());
-                    for (NegotiationRevision rev : revisions) {
-                        List<Document> docs = documentRepository.findByNegotiationRevisionId(rev.getId());
-                        documentRepository.deleteAll(docs);
-                    }
-                    negotiationRevisionRepository.deleteAll(revisions);
-                }
-                negotiationRepository.deleteAll(negotiations);
-            }
-            leadRepository.deleteAll(leads);
-
-            // 11. Delete Roles
-            List<Role> roles = roleRepository.findByUserIdFk(adminUserId);
-            roleRepository.deleteAll(roles);
-
-            // 12. Delete Admin User record itself
-            userRepository.findById(adminUserId)
-                    .ifPresent(userRepository::delete);
-        }
     }
 
     private Organization mapToEntity(OrganizationRequest req, Organization org) {

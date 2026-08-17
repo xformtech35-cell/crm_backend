@@ -14,6 +14,12 @@ public class TrashItemResponse {
     private String itemType;   // e.g., "Lead", "Contact", "Opportunity", "Organization", "Project", "Task"
     private Long recordId;
     private String name;
+    private String email;
+    private String phone;
+    private String organization;
+    private String status;
+    private String details;
     private String deletedAt;
     private String moduleKey;  // e.g., "leads", "contacts", "opportunities", "organizations", "projects", "tasks"
 }
+

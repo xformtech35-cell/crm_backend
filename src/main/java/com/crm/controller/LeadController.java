@@ -224,12 +224,6 @@ public class LeadController {
                 leadService.convertToOpportunity(id, user.getUserid())));
     }
 
-    @PostMapping("/sync-all")
-    public ResponseEntity<ApiResponse<String>> syncAllEntities() {
-        leadService.syncAllExistingLeadsToEntities();
-        return ResponseEntity.ok(ApiResponse.success("Background sync triggered for Contacts, Organizations, and Opportunities", "OK"));
-    }
-
     @PostMapping({"/import", "/import/indiamart"})
     public ResponseEntity<ApiResponse<List<Lead>>> importFromIndiamart(@Valid @RequestBody ImportLeadRequest request,
             Authentication auth) {
