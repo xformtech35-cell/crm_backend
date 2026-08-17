@@ -275,16 +275,21 @@ public class AuthUtil {
         if (user == null) return "OWN_DATA_ONLY";
         // Super Admin always has full access — unconditional
         if (isSuperAdmin(user.getRole())) return "ALL_DATA";
-        // NOTE: Company Admin (ADMIN role) now reads from crm_data_scope_config.
-        // DataSeedService ensures ALL_DATA rows exist for all Admin roles on startup.
-        // This removes the previous hardcoded "if (isAnyAdmin) return ALL_DATA" bypass.
 
         String normalizedModule = moduleName.toUpperCase();
+        Long companyAdminId = getCompanyAdminId(user);
 
         // 1. Check User-specific override
-        Optional<DataScopeConfig> userConfig = dataScopeConfigRepository.findByUserIdFkAndModuleName(user.getUserid(), normalizedModule);
-        if (userConfig.isPresent()) {
-            return userConfig.get().getScopeMode();
+        if (companyAdminId != null) {
+            Optional<DataScopeConfig> userConfig = dataScopeConfigRepository.findByCompanyAdminIdFkAndUserIdFkAndModuleName(companyAdminId, user.getUserid(), normalizedModule);
+            if (userConfig.isPresent()) {
+                return userConfig.get().getScopeMode();
+            }
+        } else {
+            Optional<DataScopeConfig> userConfig = dataScopeConfigRepository.findByUserIdFkAndModuleName(user.getUserid(), normalizedModule);
+            if (userConfig.isPresent()) {
+                return userConfig.get().getScopeMode();
+            }
         }
 
         // 2. Check Role-specific configuration
@@ -292,17 +297,23 @@ public class AuthUtil {
         if (roleStr != null) {
             try {
                 Long roleId = Long.parseLong(roleStr);
-                Optional<DataScopeConfig> roleConfig = dataScopeConfigRepository.findByRoleIdFkAndModuleName(roleId, normalizedModule);
+                Optional<DataScopeConfig> roleConfig = companyAdminId != null
+                        ? dataScopeConfigRepository.findByCompanyAdminIdFkAndRoleIdFkAndModuleName(companyAdminId, roleId, normalizedModule)
+                        : dataScopeConfigRepository.findByRoleIdFkAndModuleName(roleId, normalizedModule);
                 if (roleConfig.isPresent()) {
                     return roleConfig.get().getScopeMode();
                 }
             } catch (NumberFormatException e) {
-                // Find role by name
-                Optional<com.crm.entity.Role> roleObj = roleRepository.findAll().stream()
+                // Find role by name within this company
+                Optional<com.crm.entity.Role> roleObj = (companyAdminId != null ? roleRepository.findByUserIdFk(companyAdminId) : roleRepository.findAll())
+                        .stream()
                         .filter(r -> r.getRoleName() != null && r.getRoleName().equalsIgnoreCase(roleStr))
                         .findFirst();
                 if (roleObj.isPresent()) {
-                    Optional<DataScopeConfig> roleConfig = dataScopeConfigRepository.findByRoleIdFkAndModuleName(roleObj.get().getRoleId(), normalizedModule);
+                    Long rId = roleObj.get().getRoleId();
+                    Optional<DataScopeConfig> roleConfig = companyAdminId != null
+                            ? dataScopeConfigRepository.findByCompanyAdminIdFkAndRoleIdFkAndModuleName(companyAdminId, rId, normalizedModule)
+                            : dataScopeConfigRepository.findByRoleIdFkAndModuleName(rId, normalizedModule);
                     if (roleConfig.isPresent()) {
                         return roleConfig.get().getScopeMode();
                     }
@@ -314,7 +325,9 @@ public class AuthUtil {
         Optional<TeamMember> tm = teamMemberRepository.findByTeamMemberEmail(user.getUserEmail());
         if (tm.isPresent() && tm.get().getTeamMemberRole() != null) {
             Long tmRoleId = tm.get().getTeamMemberRole();
-            Optional<DataScopeConfig> roleConfig = dataScopeConfigRepository.findByRoleIdFkAndModuleName(tmRoleId, normalizedModule);
+            Optional<DataScopeConfig> roleConfig = companyAdminId != null
+                    ? dataScopeConfigRepository.findByCompanyAdminIdFkAndRoleIdFkAndModuleName(companyAdminId, tmRoleId, normalizedModule)
+                    : dataScopeConfigRepository.findByRoleIdFkAndModuleName(tmRoleId, normalizedModule);
             if (roleConfig.isPresent()) {
                 return roleConfig.get().getScopeMode();
             }
