@@ -32,8 +32,12 @@ public class Document {
     @Column(name = "file_size")
     private Long fileSize;
 
+    @Column(name = "file_type", length = 100)
+    private String fileType;
+
     @Column(name = "uploaded_date")
     private LocalDateTime uploadedDate;
+
 
     @ManyToOne
     @JoinColumn(name = "negotiation_revision_id")

@@ -155,25 +155,6 @@ public class DocumentService {
         return mapToDocumentResponse(document);
     }
 
-    @Transactional
-    public void deleteDocument(Long documentId) {
-        Document document = documentRepository.findById(documentId)
-                .orElseThrow(() -> new ResourceNotFoundException("Document not found with id: " + documentId));
-        
-        fileUploadUtil.deleteFile(document.getFileUrl());
-        documentRepository.delete(document);
-    }
-
-    @Transactional
-    public void deleteAllDocumentsByQuotationNo(String quotationNo) {
-        List<Document> documents = documentRepository.findByQuotationNo(quotationNo);
-        
-        for (Document doc : documents) {
-            fileUploadUtil.deleteFile(doc.getFileUrl());
-        }
-        
-        documentRepository.deleteByQuotationNo(quotationNo);
-    }
 
     /**
      * Extract relative path for /api/view/ endpoint
