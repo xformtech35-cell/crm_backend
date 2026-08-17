@@ -171,8 +171,8 @@ public class NegotiationController {
                 }
             }
 
-            // Sync back quotationNo if blank in negotiation record
-            if ((n.getQuotationNo() == null || n.getQuotationNo().isBlank()) && quotationNo != null && !quotationNo.isBlank()) {
+            // Sync back quotationNo if changed or blank in negotiation record
+            if (quotationNo != null && !quotationNo.isBlank() && !quotationNo.equalsIgnoreCase(n.getQuotationNo())) {
                 try {
                     n.setQuotationNo(quotationNo);
                     negotiationRepository.save(n);
@@ -185,6 +185,7 @@ public class NegotiationController {
             map.put("leadIdFk", n.getLeadIdFk());
             map.put("negotiationName", n.getNegotiationName());
             map.put("quotationNo", quotationNo);
+            map.put("quotationNumber", quotationNo);
             String revNo = n.getQuotationRevision();
             if (revNo == null || revNo.isBlank()) {
                 revNo = "R0";
