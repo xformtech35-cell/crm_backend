@@ -199,9 +199,9 @@ public class IndiamartIntegrationService {
         }
     }
 
-    @jakarta.annotation.PostConstruct
     public void repairExistingIndiamartLeads() {
         try {
+
             List<Lead> allLeads = leadRepository.findAll();
             boolean changed = false;
             for (Lead lead : allLeads) {
