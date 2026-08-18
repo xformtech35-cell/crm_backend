@@ -166,6 +166,9 @@ public class LeadService {
                         });
             }
         }
+        if (!userIds.contains(0L)) {
+            userIds.add(0L);
+        }
         return userIds;
     }
 

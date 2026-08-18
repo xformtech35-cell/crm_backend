@@ -71,6 +71,9 @@ public interface LeadRepository extends JpaRepository<Lead, Long>, JpaSpecificat
     long countByLeadStatus(String leadStatus);
     long countByUserIdFk(Long userIdFk);    
 
+    @Query("SELECT COUNT(l) FROM Lead l WHERE (l.userIdFk IN :userIds OR l.leadAssignedMember IN :userIds)")
+    long countByUserIdFkIn(@Param("userIds") List<Long> userIds);
+
     @Query("SELECT l.leadStatus AS status, COUNT(l) AS count FROM Lead l GROUP BY l.leadStatus")
     List<Object[]> countGroupByStatus();
 
@@ -82,6 +85,12 @@ public interface LeadRepository extends JpaRepository<Lead, Long>, JpaSpecificat
 
     @Query("SELECT l.leadSource AS source, COUNT(l) AS count FROM Lead l WHERE l.userIdFk = :userId GROUP BY l.leadSource")
     List<Object[]> countGroupBySourceForUser(@Param("userId") Long userId);
+
+    @Query("SELECT l.leadStatus AS status, COUNT(l) AS count FROM Lead l WHERE (l.userIdFk IN :userIds OR l.leadAssignedMember IN :userIds) GROUP BY l.leadStatus")
+    List<Object[]> countGroupByStatusForUserIds(@Param("userIds") List<Long> userIds);
+
+    @Query("SELECT l.leadSource AS source, COUNT(l) AS count FROM Lead l WHERE (l.userIdFk IN :userIds OR l.leadAssignedMember IN :userIds) GROUP BY l.leadSource")
+    List<Object[]> countGroupBySourceForUserIds(@Param("userIds") List<Long> userIds);
 
     @Query("SELECT l FROM Lead l WHERE l.leadCreatedDate BETWEEN :fromDate AND :toDate")
     List<Lead> findByLeadCreatedDateBetween(@Param("fromDate") java.time.LocalDateTime fromDate, @Param("toDate") java.time.LocalDateTime toDate);

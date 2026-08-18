@@ -16,6 +16,7 @@ public class DashboardService {
     private final LeadRepository leadRepository;
     private final OpportunityRepository opportunityRepository;
     private final ProjectRepository projectRepository;
+    private final LeadService leadService;
     private final AuthUtil authUtil;
 
     public DashboardResponse getDashboardStats(User user) {
@@ -36,25 +37,25 @@ public class DashboardService {
             leadAllCount = leadRepository.count();
             projectCount = projectRepository.count();
         } else {
-            Long companyAdminId = authUtil.getCompanyAdminId(user);
-            if (companyAdminId == null) companyAdminId = user.getUserid();
-            
+            List<Long> companyUserIds = leadService.getCompanyUserIds(user.getUserid(), user.getRole());
+            if (companyUserIds.isEmpty()) companyUserIds = List.of(user.getUserid(), 0L);
+
             String scopeMode = authUtil.resolveDataScopeMode(user, "LEADS");
             if ("ALL_DATA".equals(scopeMode) || authUtil.isAdmin(user.getRole())) {
-                leadStatusMap = buildStatusMap(leadRepository.countGroupByStatusForUser(companyAdminId));
-                oppStatusMap  = buildStatusMap(opportunityRepository.countGroupByStatusForUser(companyAdminId));
-                projStatusMap = buildStatusMap(projectRepository.countGroupByStatusForUser(companyAdminId));
-                leadSourceMap = buildStatusMap(leadRepository.countGroupBySourceForUser(companyAdminId));
-                leadAllCount = leadRepository.countByUserIdFk(companyAdminId);
-                projectCount = projectRepository.countByUserIdFk(companyAdminId);
+                leadStatusMap = buildStatusMap(leadRepository.countGroupByStatusForUserIds(companyUserIds));
+                oppStatusMap  = buildStatusMap(opportunityRepository.countGroupByStatusForUserIds(companyUserIds));
+                projStatusMap = buildStatusMap(projectRepository.countGroupByStatusForUserIds(companyUserIds));
+                leadSourceMap = buildStatusMap(leadRepository.countGroupBySourceForUserIds(companyUserIds));
+                leadAllCount = leadRepository.countByUserIdFkIn(companyUserIds);
+                projectCount = projectRepository.countByUserIdFkIn(companyUserIds);
             } else {
-                Long userId = user.getUserid();
-                leadStatusMap = buildStatusMap(leadRepository.countGroupByStatusForUser(userId));
-                oppStatusMap  = buildStatusMap(opportunityRepository.countGroupByStatusForUser(userId));
-                projStatusMap = buildStatusMap(projectRepository.countGroupByStatusForUser(userId));
-                leadSourceMap = buildStatusMap(leadRepository.countGroupBySourceForUser(userId));
-                leadAllCount = leadRepository.countByUserIdFk(userId);
-                projectCount = projectRepository.countByUserIdFk(userId);
+                List<Long> ownUserIds = List.of(user.getUserid());
+                leadStatusMap = buildStatusMap(leadRepository.countGroupByStatusForUserIds(ownUserIds));
+                oppStatusMap  = buildStatusMap(opportunityRepository.countGroupByStatusForUserIds(ownUserIds));
+                projStatusMap = buildStatusMap(projectRepository.countGroupByStatusForUserIds(ownUserIds));
+                leadSourceMap = buildStatusMap(leadRepository.countGroupBySourceForUserIds(ownUserIds));
+                leadAllCount = leadRepository.countByUserIdFkIn(ownUserIds);
+                projectCount = projectRepository.countByUserIdFkIn(ownUserIds);
             }
         }
 
@@ -62,25 +63,57 @@ public class DashboardService {
         List<Map<String, Object>> oppChartData  = buildChartList(oppStatusMap);
         List<Map<String, Object>> sourceChartData = buildChartList(leadSourceMap);
 
+        long qualified = getCountMatching(leadStatusMap, "qualif");
+        long working = getCountMatching(leadStatusMap, "working");
+        long quotationSent = getCountMatching(leadStatusMap, "quotation", "sent");
+        long negotiation = getCountMatching(leadStatusMap, "negoti");
+        long contacted = getCountMatching(leadStatusMap, "contact");
+        long notContacted = getCountMatching(leadStatusMap, "not", "new", "open");
+        long converted = getCountMatching(leadStatusMap, "convert", "won");
+
+        long oppWon = getCountMatching(oppStatusMap, "won");
+        long oppLost = getCountMatching(oppStatusMap, "lost", "close");
+        long oppOpen = getCountMatching(oppStatusMap, "open");
+        if (oppOpen == 0 && oppStatusMap.isEmpty()) {
+            oppOpen = Math.max(0L, leadAllCount - oppWon - oppLost);
+        }
+
+        long leadOpenCount = Math.max(0L, leadAllCount - getCountMatching(leadStatusMap, "won", "close", "lost", "disqualif"));
+
         return DashboardResponse.builder()
                 .leadAll(leadAllCount)
-                .leadNotContacted(leadStatusMap.getOrDefault("NotContacted", 0L))
-                .leadContacted(leadStatusMap.getOrDefault("Contacted", 0L))
-                .leadQualified(leadStatusMap.getOrDefault("Qualified Lead", 0L))
-                .leadWorking(leadStatusMap.getOrDefault("Working", 0L))
-                .leadQuotationSent(leadStatusMap.getOrDefault("QuotationSent", 0L))
-                .leadNegotiation(leadStatusMap.getOrDefault("Negotiation", 0L))
-                .leadConverted(leadStatusMap.getOrDefault("Converted", 0L))
-                .opportunityWon(oppStatusMap.getOrDefault("Won", 0L))
-                .opportunityLost(oppStatusMap.getOrDefault("Lost", 0L))
-                .opportunityOpen(oppStatusMap.getOrDefault("Open", 0L))
-                .leadOpen(leadStatusMap.values().stream().mapToLong(Long::longValue).sum())
+                .leadNotContacted(notContacted)
+                .leadContacted(contacted)
+                .leadQualified(qualified)
+                .leadWorking(working)
+                .leadQuotationSent(quotationSent)
+                .leadNegotiation(negotiation)
+                .leadConverted(converted)
+                .opportunityWon(oppWon)
+                .opportunityLost(oppLost)
+                .opportunityOpen(oppOpen)
+                .leadOpen(leadOpenCount)
                 .projectCount(projectCount)
                 .leadSourceWiseCount(sourceChartData)
                 .projectStatusWiseCount(buildChartList(projStatusMap))
                 .opportunityStatusWiseCount(oppChartData)
                 .statusWiseLeadByMonth(leadChartData)
                 .build();
+    }
+
+    private long getCountMatching(Map<String, Long> statusMap, String... keywords) {
+        if (statusMap == null || statusMap.isEmpty()) return 0L;
+        long total = 0L;
+        for (Map.Entry<String, Long> entry : statusMap.entrySet()) {
+            String key = entry.getKey() != null ? entry.getKey().toLowerCase() : "";
+            for (String kw : keywords) {
+                if (key.contains(kw.toLowerCase())) {
+                    total += entry.getValue();
+                    break;
+                }
+            }
+        }
+        return total;
     }
 
     private Map<String, Long> buildStatusMap(List<Object[]> rows) {

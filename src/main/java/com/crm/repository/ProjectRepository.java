@@ -17,9 +17,15 @@ public interface ProjectRepository extends JpaRepository<Project, Long>, JpaSpec
     long countByProjectStatus(String projectStatus);
     long countByUserIdFk(Long userIdFk);
 
+    @Query("SELECT COUNT(p) FROM Project p WHERE p.userIdFk IN :userIds")
+    long countByUserIdFkIn(@Param("userIds") List<Long> userIds);
+
     @Query("SELECT p.projectStatus AS status, COUNT(p) AS count FROM Project p GROUP BY p.projectStatus")
     List<Object[]> countGroupByStatus();
 
     @Query("SELECT p.projectStatus AS status, COUNT(p) AS count FROM Project p WHERE p.userIdFk = :userId GROUP BY p.projectStatus")
     List<Object[]> countGroupByStatusForUser(@Param("userId") Long userId);
+
+    @Query("SELECT p.projectStatus AS status, COUNT(p) AS count FROM Project p WHERE p.userIdFk IN :userIds GROUP BY p.projectStatus")
+    List<Object[]> countGroupByStatusForUserIds(@Param("userIds") List<Long> userIds);
 }
