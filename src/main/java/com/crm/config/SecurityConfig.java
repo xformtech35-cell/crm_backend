@@ -28,6 +28,7 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthFilter;
     private final UserDetailsServiceImpl userDetailsService;
     private final CorsConfigurationSource corsConfigurationSource;
+    private final CustomCorsFilter customCorsFilter;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -89,6 +90,7 @@ public class SecurityConfig {
                     .anyRequest().authenticated()
                 )
             .authenticationProvider(authenticationProvider())
+            .addFilterBefore(customCorsFilter, org.springframework.security.web.access.channel.ChannelProcessingFilter.class)
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }

@@ -104,6 +104,7 @@ C:\Projects\CRM\crm_backend\src\main\java\com\crm\service\CalendarEventService.j
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\repository\LeadGroupRepository.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\repository\IntegrationConfigRepository.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\dto\request\TeamRequest.java
+C:\Projects\CRM\crm_backend\src\main\java\com\crm\config\CustomCorsFilter.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\controller\DocumentController.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\dto\request\ContactRequest.java
 C:\Projects\CRM\crm_backend\src\main\java\com\crm\service\IndiamartIntegrationService.java

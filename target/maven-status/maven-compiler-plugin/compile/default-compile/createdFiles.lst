@@ -154,6 +154,7 @@ com\crm\entity\LeadNote.class
 com\crm\config\WebSocketConfig.class
 com\crm\dto\response\DashboardResponse$DashboardResponseBuilder.class
 com\crm\service\AuthService.class
+com\crm\config\CustomCorsFilter.class
 com\crm\repository\NegotiationRepository.class
 com\crm\controller\LeadController.class
 com\crm\repository\NegotiationRevisionRepository.class
