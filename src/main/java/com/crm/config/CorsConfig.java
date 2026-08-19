@@ -41,6 +41,7 @@ public class CorsConfig {
     }
 
     @Bean
+    @org.springframework.core.annotation.Order(org.springframework.core.Ordered.HIGHEST_PRECEDENCE)
     public CorsFilter corsFilter() {
         return new CorsFilter(corsConfigurationSource());
     }
