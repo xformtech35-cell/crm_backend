@@ -22,15 +22,15 @@ public class CustomCorsFilter implements Filter {
         String origin = request.getHeader("Origin");
         if (origin != null && !origin.isEmpty()) {
             response.setHeader("Access-Control-Allow-Origin", origin);
+            response.setHeader("Access-Control-Allow-Credentials", "true");
         } else {
             response.setHeader("Access-Control-Allow-Origin", "*");
         }
 
-        response.setHeader("Access-Control-Allow-Credentials", "true");
         response.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS");
         response.setHeader("Access-Control-Max-Age", "3600");
-        response.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept, X-Requested-With, remember-me, X-Company-Id, X-Selected-Team-Member-Id, Origin");
-        response.setHeader("Access-Control-Expose-Headers", "Authorization, X-Company-Id, X-Selected-Team-Member-Id");
+        response.setHeader("Access-Control-Allow-Headers", "*");
+        response.setHeader("Access-Control-Expose-Headers", "*");
 
         if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
             response.setStatus(HttpServletResponse.SC_OK);
