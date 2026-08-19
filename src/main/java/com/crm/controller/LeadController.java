@@ -716,6 +716,25 @@ public class LeadController {
         );
     }
 
+    @GetMapping("/max-quotation-serial")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getMaxQuotationSerial(Authentication auth) {
+        User user = authUtil.getCurrentUser(auth);
+        int maxSerial = leadService.getMaxQuotationSerial(user);
+        Map<String, Object> resp = new HashMap<>();
+        resp.put("maxSerial", maxSerial);
+        resp.put("nextSerial", maxSerial + 1);
+        return ResponseEntity.ok(ApiResponse.success("Max quotation serial fetched", resp));
+    }
+
+    @PatchMapping("/{id}/enquiryType")
+    public ResponseEntity<ApiResponse<Lead>> updateLeadEnquiryType(
+            @PathVariable Long id,
+            @RequestBody Map<String, String> body) {
+        String enquiryType = body.get("enquiryType");
+        Lead updated = leadService.updateLeadEnquiryType(id, enquiryType);
+        return ResponseEntity.ok(ApiResponse.success("Enquiry type updated successfully", updated));
+    }
+
     private String generateQuotationNo() {
         return "QTN-" + System.currentTimeMillis();
     }

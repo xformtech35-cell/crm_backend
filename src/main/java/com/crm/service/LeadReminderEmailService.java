@@ -41,6 +41,13 @@ public class LeadReminderEmailService {
             log.info("Found {} pending lead reminders to send", pendingReminders.size());
             for (LeadReminder reminder : pendingReminders) {
                 try {
+                    // Fix: Skip reminders set to exact 00:00:00 midnight unless current time is at or past 09:00 AM
+                    if (reminder.getReminderDate() != null 
+                        && reminder.getReminderDate().getHour() == 0 
+                        && reminder.getReminderDate().getMinute() == 0 
+                        && now.getHour() < 9) {
+                        continue;
+                    }
                     sendReminderEmail(reminder);
                     reminder.setSent(true);
                     leadReminderRepository.save(reminder);

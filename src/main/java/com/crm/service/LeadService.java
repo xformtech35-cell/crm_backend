@@ -275,6 +275,9 @@ public class LeadService {
             MultipartFile doc, MultipartFile doc1,
             MultipartFile doc2, MultipartFile doc3) throws IOException {
         Lead lead = mapToEntity(request, new Lead());
+        if (lead.getEnquiryType() == null || lead.getEnquiryType().isBlank()) {
+            lead.setEnquiryType("Qualified");
+        }
         User currentUser = userRepository.findById(userId).orElse(null);
         Long companyAdminId = authUtil.getCompanyAdminId(currentUser);
         if (companyAdminId == null) companyAdminId = userId;
@@ -852,6 +855,40 @@ public class LeadService {
 
     public Lead updateLeadOutcomeStatus(Long id, String leadOutcomeStatus) {
         return updateLeadOutcomeStatus(id, leadOutcomeStatus, null);
+    }
+
+    public Lead updateLeadEnquiryType(Long id, String enquiryType) {
+        Lead lead = leadRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Lead not found with id: " + id));
+        lead.setEnquiryType(enquiryType);
+        lead.setUpdatedDate(LocalDateTime.now());
+        return leadRepository.save(lead);
+    }
+
+    public int getMaxQuotationSerial(User user) {
+        Long companyAdminId = authUtil.getCompanyAdminId(user);
+        List<Lead> leads;
+        if (companyAdminId != null) {
+            leads = leadRepository.findByUserIdFkInOrLeadAssignedMemberIn(getCompanyUserIds(user.getUserid(), user.getRole()));
+        } else {
+            leads = leadRepository.findAll();
+        }
+        int maxSerial = 0;
+        for (Lead lead : leads) {
+            String qNo = lead.getQuotationNumber();
+            if (qNo != null && !qNo.isBlank()) {
+                java.util.regex.Matcher m = java.util.regex.Pattern.compile("/(\\d{3,})(?:/R\\d+)?$").matcher(qNo.trim());
+                if (m.find()) {
+                    try {
+                        int serial = Integer.parseInt(m.group(1));
+                        if (serial < 150 && serial > maxSerial) {
+                            maxSerial = serial;
+                        }
+                    } catch (NumberFormatException ignored) {}
+                }
+            }
+        }
+        return maxSerial;
     }
 
 
