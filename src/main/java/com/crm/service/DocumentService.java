@@ -225,9 +225,9 @@ public class DocumentService {
 }
     @Transactional
     public void deleteDocument(Long documentId) {
-        Document doc = documentRepository.findById(documentId)
-                .orElse(null);
+        Document doc = documentRepository.findById(documentId).orElse(null);
         if (doc != null) {
+            doc.setNegotiationRevision(null);
             documentRepository.delete(doc);
             log.info("Document permanently deleted with id: {}", documentId);
         }
@@ -237,6 +237,12 @@ public class DocumentService {
     public void deleteAllDocumentsByQuotationNo(String quotationNo) {
         List<Document> docs = documentRepository.findByQuotationNo(quotationNo);
         if (docs != null && !docs.isEmpty()) {
+            docs = docs.stream()
+                    .filter(d -> d != null && d.getQuotationNo() != null && d.getQuotationNo().equalsIgnoreCase(quotationNo))
+                    .collect(Collectors.toList());
+            for (Document d : docs) {
+                d.setNegotiationRevision(null);
+            }
             documentRepository.deleteAll(docs);
             log.info("All documents permanently deleted for quotation: {}", quotationNo);
         }

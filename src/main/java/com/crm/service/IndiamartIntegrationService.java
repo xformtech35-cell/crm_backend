@@ -195,7 +195,6 @@ public class IndiamartIntegrationService {
             config.setSyncStatus("FAILURE");
             config.setLastSyncTime(LocalDateTime.now());
             configRepository.save(config);
-            throw new RuntimeException(e.getMessage(), e);
         }
     }
 

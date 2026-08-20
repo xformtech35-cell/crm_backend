@@ -354,18 +354,23 @@ public ResponseEntity<ApiResponse<Lead>> getDetails(@PathVariable Long id) {
                 try {
                     List<Document> documents = documentRepository.findByNegotiationRevisionId(rev.getId());
                     if (documents == null || documents.isEmpty()) {
-                        if (rev.getQuotationNo() != null && !rev.getQuotationNo().isBlank()) {
-                            List<Document> byQtn = documentRepository.findByQuotationNo(rev.getQuotationNo());
-                            if (byQtn != null) {
-                                documents = byQtn.stream()
-                                        .filter(d -> d != null && d.getQuotationNo() != null && rev.getQuotationNo().equalsIgnoreCase(d.getQuotationNo()))
-                                        .filter(d -> {
-                                            if ("R0".equalsIgnoreCase(revCode) && d.getFileUrl() != null && d.getFileUrl().contains("/R")) {
-                                                return false;
-                                            }
-                                            return true;
-                                        })
-                                        .collect(Collectors.toList());
+                        String quotationNo = rev.getQuotationNo();
+                        if (quotationNo != null && !quotationNo.isBlank()) {
+                            boolean isR0 = "R0".equalsIgnoreCase(revCode);
+                            boolean matchesRevSuffix = quotationNo.toUpperCase().endsWith("/" + revCode.toUpperCase());
+                            if (isR0 || matchesRevSuffix) {
+                                List<Document> byQtn = documentRepository.findByQuotationNo(quotationNo);
+                                if (byQtn != null) {
+                                    documents = byQtn.stream()
+                                            .filter(d -> d != null && d.getQuotationNo() != null && quotationNo.equalsIgnoreCase(d.getQuotationNo()))
+                                            .filter(d -> {
+                                                if (isR0 && d.getFileUrl() != null && d.getFileUrl().contains("/R")) {
+                                                    return false;
+                                                }
+                                                return true;
+                                            })
+                                            .collect(Collectors.toList());
+                                }
                             }
                         }
                     }
@@ -460,11 +465,21 @@ public ResponseEntity<ApiResponse<Lead>> getDetails(@PathVariable Long id) {
             if (documents == null || documents.isEmpty()) {
                 String quotationNo = rev.getQuotationNo();
                 if (quotationNo != null && !quotationNo.isBlank()) {
-                    List<Document> byQtn = documentRepository.findByQuotationNo(quotationNo);
-                    if (byQtn != null) {
-                        documents = byQtn.stream()
-                                .filter(d -> d != null && d.getQuotationNo() != null && quotationNo.equalsIgnoreCase(d.getQuotationNo()))
-                                .collect(Collectors.toList());
+                    boolean isR0 = "R0".equalsIgnoreCase(revCode);
+                    boolean matchesRevSuffix = quotationNo.toUpperCase().endsWith("/" + revCode.toUpperCase());
+                    if (isR0 || matchesRevSuffix) {
+                        List<Document> byQtn = documentRepository.findByQuotationNo(quotationNo);
+                        if (byQtn != null) {
+                            documents = byQtn.stream()
+                                    .filter(d -> d != null && d.getQuotationNo() != null && quotationNo.equalsIgnoreCase(d.getQuotationNo()))
+                                    .filter(d -> {
+                                        if (isR0 && d.getFileUrl() != null && d.getFileUrl().contains("/R")) {
+                                            return false;
+                                        }
+                                        return true;
+                                    })
+                                    .collect(Collectors.toList());
+                        }
                     }
                 }
             }
@@ -491,7 +506,8 @@ public ResponseEntity<ApiResponse<Lead>> getDetails(@PathVariable Long id) {
                 map.put("documentCount", docList.size());
             } else {
                 List<Map<String, Object>> docList = new ArrayList<>();
-                if (negotiation.getLeadIdFk() != null) {
+                boolean isR0 = "R0".equalsIgnoreCase(revCode);
+                if (isR0 && negotiation.getLeadIdFk() != null) {
                     Optional<Lead> leadOptDoc = leadRepository.findById(negotiation.getLeadIdFk());
                     if (leadOptDoc.isPresent()) {
                         Lead lead = leadOptDoc.get();
@@ -503,6 +519,7 @@ public ResponseEntity<ApiResponse<Lead>> getDetails(@PathVariable Long id) {
 
                         for (int i = 0; i < urls.size(); i++) {
                             String url = urls.get(i);
+                            if (url != null && url.contains("/R")) continue; // Skip sub-revision files for R0
                             String fileName = url.substring(url.lastIndexOf('/') + 1);
                             if (fileName.contains("_")) {
                                 fileName = fileName.substring(fileName.indexOf('_') + 1);
@@ -515,6 +532,9 @@ public ResponseEntity<ApiResponse<Lead>> getDetails(@PathVariable Long id) {
                             docMap.put("uploadedDate", lead.getLeadCreatedDate());
                             docMap.put("fileUrl", url);
                             docList.add(docMap);
+                        }
+                        if (docList.size() > 1) {
+                            docList = docList.subList(docList.size() - 1, docList.size());
                         }
                     }
                 }

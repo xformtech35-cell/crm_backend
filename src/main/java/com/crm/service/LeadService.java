@@ -478,6 +478,12 @@ public class LeadService {
     public void syncLeadDocumentsToRevision(Lead lead, NegotiationRevision revision) {
         if (lead == null || revision == null || revision.getId() == null) return;
 
+        // ONLY sync lead uploadDocument to R0 revision! Sub-revisions (R1, R2, R3, R4...) carry their own uploaded files!
+        String revCode = revision.getQuotationRevision();
+        if (revCode != null && !"R0".equalsIgnoreCase(revCode)) {
+            return;
+        }
+
         List<String> docUrls = new ArrayList<>();
         if (lead.getUploadDocument() != null && !lead.getUploadDocument().isBlank()) docUrls.add(lead.getUploadDocument());
         if (lead.getUploadDocument1() != null && !lead.getUploadDocument1().isBlank()) docUrls.add(lead.getUploadDocument1());
