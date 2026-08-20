@@ -55,8 +55,7 @@ public class OrganizationService {
             if (teamUserIds.isEmpty()) teamUserIds = List.of(-1L);
             return organizationRepository.findByUserIdFkIn(teamUserIds);
         }
-        List<Long> companyUserIds = leadService.getCompanyUserIds(userId, role);
-        return organizationRepository.findByUserIdFkIn(companyUserIds);
+        return organizationRepository.findByUserIdFk(userId);
     }
 
     public Organization getById(Long id) {

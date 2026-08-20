@@ -62,7 +62,10 @@ public class FileUploadUtil {
             extension = originalFilename.substring(originalFilename.lastIndexOf("."));
         }
 
-        String filename = UUID.randomUUID() + extension;
+        String sanitizedOrig = (originalFilename != null && !originalFilename.isBlank())
+                ? originalFilename.replaceAll("[^a-zA-Z0-9._() -]", "_")
+                : "Document" + extension;
+        String filename = UUID.randomUUID().toString().substring(0, 8) + "_" + sanitizedOrig;
 
         Path filePath = uploadPath.resolve(filename);
 
@@ -171,8 +174,11 @@ public String uploadFile(MultipartFile file, String subDirectory) throws IOExcep
         extension = originalFileName.substring(originalFileName.lastIndexOf("."));
     }
 
-    // Generate unique filename WITH extension
-    String uniqueFileName = UUID.randomUUID() + extension;
+    // Generate unique filename preserving original name with UUID prefix
+    String sanitizedOriginal = (originalFileName != null && !originalFileName.isBlank())
+            ? originalFileName.replaceAll("[^a-zA-Z0-9._() -]", "_")
+            : "Document" + extension;
+    String uniqueFileName = UUID.randomUUID().toString().substring(0, 8) + "_" + sanitizedOriginal;
 
     String uploadDirPath = getUploadDir();
     if (uploadDirPath == null || uploadDirPath.isBlank()) {

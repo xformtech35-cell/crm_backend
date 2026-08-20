@@ -158,7 +158,7 @@ public class IndiamartIntegrationService {
                                     .leadSource(com.crm.util.AppConstants.INDIAMART_SOURCE)
                                     .leadStatus(com.crm.util.AppConstants.INDIAMART_DEFAULT_STATUS)
                                     .leadOutcomeStatus("Open")
-                                    .enquiryType("Product Enquiry")
+                                    .enquiryType("Qualified")
                                     .enquiryStatus("Pending")
                                     .inquiryDate(inquiryLocalDate)
                                     .leadCreatedDate(createdLocalDateTime)
@@ -207,9 +207,10 @@ public class IndiamartIntegrationService {
             for (Lead lead : allLeads) {
                 boolean leadModified = false;
                 
-                // Fix leadStatus if it's "New" or "None" or null
-                if (lead.getLeadStatus() == null || lead.getLeadStatus().isBlank() || "New".equalsIgnoreCase(lead.getLeadStatus()) || "None".equalsIgnoreCase(lead.getLeadStatus())) {
-                    lead.setLeadStatus("New Lead");
+                // Fix leadStatus/enquiryType if it's "New", "New Lead", "None" or null
+                if (lead.getLeadStatus() == null || lead.getLeadStatus().isBlank() || "New".equalsIgnoreCase(lead.getLeadStatus()) || "New Lead".equalsIgnoreCase(lead.getLeadStatus()) || "None".equalsIgnoreCase(lead.getLeadStatus())) {
+                    lead.setLeadStatus("Qualified");
+                    lead.setEnquiryType("Qualified");
                     leadModified = true;
                 }
 

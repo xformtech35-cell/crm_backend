@@ -32,5 +32,5 @@ public final class AppConstants {
     // Indiamart
     public static final String INDIAMART_SOURCE = "IndiaMART";
     public static final String INDIAMART_DEFAULT_TYPE = "Hot";
-    public static final String INDIAMART_DEFAULT_STATUS = "New Lead";
+    public static final String INDIAMART_DEFAULT_STATUS = "Qualified";
 }

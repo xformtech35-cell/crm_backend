@@ -46,6 +46,15 @@ public class DocumentService {
                 log.info("Using revision ID: {} for quotation: {}", negotiationRevision.getId(), quotationNo);
             }
 
+            // Remove previous documents for this exact quotation number so only 1 active document exists per revision
+            List<Document> existingDocs = documentRepository.findByQuotationNo(quotationNo);
+            if (existingDocs != null && !existingDocs.isEmpty()) {
+                existingDocs = existingDocs.stream()
+                        .filter(d -> d != null && d.getQuotationNo() != null && d.getQuotationNo().equalsIgnoreCase(quotationNo))
+                        .collect(Collectors.toList());
+                documentRepository.deleteAll(existingDocs);
+            }
+
             List<Document> savedDocuments = new ArrayList<>();
 
             for (MultipartFile file : files) {
@@ -101,6 +110,12 @@ public class DocumentService {
             String quotationNo = negotiationRevision.getQuotationNo();
             log.info("Uploading documents for revision ID: {}, Quotation: {}", revisionId, quotationNo);
             
+            // Remove previous documents for this revision ID so only 1 active document exists
+            List<Document> existingByRev = documentRepository.findByNegotiationRevisionId(revisionId);
+            if (existingByRev != null && !existingByRev.isEmpty()) {
+                documentRepository.deleteAll(existingByRev);
+            }
+
             List<Document> savedDocuments = new ArrayList<>();
 
             for (MultipartFile file : files) {
@@ -211,20 +226,20 @@ public class DocumentService {
     @Transactional
     public void deleteDocument(Long documentId) {
         Document doc = documentRepository.findById(documentId)
-                .orElseThrow(() -> new ResourceNotFoundException("Document not found with id: " + documentId));
-        doc.setIsDeleted(true);
-        doc.setDeletedAt(LocalDateTime.now());
-        documentRepository.save(doc);
+                .orElse(null);
+        if (doc != null) {
+            documentRepository.delete(doc);
+            log.info("Document permanently deleted with id: {}", documentId);
+        }
     }
 
     @Transactional
     public void deleteAllDocumentsByQuotationNo(String quotationNo) {
         List<Document> docs = documentRepository.findByQuotationNo(quotationNo);
-        for (Document doc : docs) {
-            doc.setIsDeleted(true);
-            doc.setDeletedAt(LocalDateTime.now());
+        if (docs != null && !docs.isEmpty()) {
+            documentRepository.deleteAll(docs);
+            log.info("All documents permanently deleted for quotation: {}", quotationNo);
         }
-        documentRepository.saveAll(docs);
     }
 
     private DocumentResponse mapToDocumentResponse(Document document) {

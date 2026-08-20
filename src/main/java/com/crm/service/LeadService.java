@@ -166,9 +166,6 @@ public class LeadService {
                         });
             }
         }
-        if (!userIds.contains(0L)) {
-            userIds.add(0L);
-        }
         return userIds;
     }
 
@@ -489,34 +486,33 @@ public class LeadService {
 
         if (docUrls.isEmpty()) return;
 
+        // Take the latest uploaded document URL
+        String latestUrl = docUrls.get(docUrls.size() - 1).trim();
         String qtnNo = revision.getQuotationNo();
+
+        // Delete previous documents for this revision so only 1 document exists per revision
         List<Document> existingDocs = documentRepository.findByNegotiationRevisionId(revision.getId());
-        if (existingDocs == null) existingDocs = new ArrayList<>();
-
-        for (String url : docUrls) {
-            String normUrl = url.trim();
-            boolean exists = existingDocs.stream()
-                    .anyMatch(d -> d.getFileUrl() != null && d.getFileUrl().equalsIgnoreCase(normUrl));
-            if (!exists) {
-                String fileName = normUrl.substring(normUrl.lastIndexOf('/') + 1);
-                if (fileName.contains("_")) {
-                    fileName = fileName.substring(fileName.indexOf('_') + 1);
-                }
-
-                Document doc = Document.builder()
-                        .quotationNo(qtnNo)
-                        .fileName(fileName)
-                        .fileUrl(normUrl)
-                        .fileSize(1024L)
-                        .fileType(normUrl.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/jpeg")
-                        .uploadedDate(LocalDateTime.now())
-                        .negotiationRevision(revision)
-                        .build();
-
-                documentRepository.saveAndFlush(doc);
-                log.info("Synced lead document '{}' to revision '{}' (ID: {})", fileName, revision.getQuotationRevision(), revision.getId());
-            }
+        if (existingDocs != null && !existingDocs.isEmpty()) {
+            documentRepository.deleteAll(existingDocs);
         }
+
+        String fileName = latestUrl.substring(latestUrl.lastIndexOf('/') + 1);
+        if (fileName.contains("_")) {
+            fileName = fileName.substring(fileName.indexOf('_') + 1);
+        }
+
+        Document doc = Document.builder()
+                .quotationNo(qtnNo)
+                .fileName(fileName)
+                .fileUrl(latestUrl)
+                .fileSize(1024L)
+                .fileType(latestUrl.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/jpeg")
+                .uploadedDate(LocalDateTime.now())
+                .negotiationRevision(revision)
+                .build();
+
+        documentRepository.saveAndFlush(doc);
+        log.info("Synced lead document '{}' to revision '{}' (ID: {})", fileName, revision.getQuotationRevision(), revision.getId());
     }
 
     @Transactional
@@ -581,7 +577,10 @@ public class LeadService {
         }
         
         if (lead != null && r0Revision != null) {
-            syncLeadDocumentsToRevision(lead, r0Revision);
+            List<Document> existingDocs = documentRepository.findByNegotiationRevisionId(r0Revision.getId());
+            if (existingDocs == null || existingDocs.isEmpty()) {
+                syncLeadDocumentsToRevision(lead, r0Revision);
+            }
         }
     }
 
@@ -642,7 +641,10 @@ public class LeadService {
         if (originalFilename != null && originalFilename.contains(".")) {
             extension = originalFilename.substring(originalFilename.lastIndexOf("."));
         }
-        String uniqueFilename = UUID.randomUUID().toString() + extension;
+        String sanitizedOrig = (originalFilename != null && !originalFilename.isBlank())
+                ? originalFilename.replaceAll("[^a-zA-Z0-9._() -]", "_")
+                : "Document" + extension;
+        String uniqueFilename = UUID.randomUUID().toString().substring(0, 8) + "_" + sanitizedOrig;
         
         // Determine subdirectory based on quotation number
         String quotationNo = lead.getQuotationNumber();

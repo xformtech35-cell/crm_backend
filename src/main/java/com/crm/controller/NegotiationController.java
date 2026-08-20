@@ -5,9 +5,12 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
@@ -125,51 +128,56 @@ public class NegotiationController {
 
         for (Negotiation n : negotiations) {
 
+            if (n.getIsDeleted() != null && n.getIsDeleted()) {
+                continue;
+            }
+
+            if (n.getLeadIdFk() == null) {
+                continue;
+            }
+
+            Optional<Lead> leadOpt = leadRepository.findById(n.getLeadIdFk());
+            if (leadOpt.isEmpty()) {
+                continue;
+            }
+
+            Lead l = leadOpt.get();
+            String leadStatus = l.getLeadStatus();
+            String leadOutcomeStatus = l.getLeadOutcomeStatus();
+
+            boolean isLeadInNegotiation = "Negotiation".equalsIgnoreCase(leadStatus) || "Negotiation".equalsIgnoreCase(leadOutcomeStatus);
+            if (!isLeadInNegotiation) {
+                continue;
+            }
+
             Map<String, Object> map = new HashMap<>();
 
-            String leadStatus = null;
-            String leadOutcomeStatus = null;
             String quotationDate = null;
             String inquiryDate = null;
-            String leadRef = null;
-            String enquiryDescription = null;
+            String leadRef = l.getLeadRef();
+            String enquiryDescription = l.getEnquiryDescription();
 
             // Default quotation number from Negotiation
             String quotationNo = n.getQuotationNo();
 
-            if (n.getLeadIdFk() != null) {
-
-                Optional<Lead> leadOpt = leadRepository.findById(n.getLeadIdFk());
-
-                if (leadOpt.isPresent()) {
-
-                    Lead l = leadOpt.get();
-
-                    leadStatus = l.getLeadStatus();
-                    leadOutcomeStatus = l.getLeadOutcomeStatus();
-                    leadRef = l.getLeadRef();
-                    enquiryDescription = l.getEnquiryDescription();
-
-                    // Latest quotation number from Lead or LeadRef fallback
-                    if (l.getQuotationNumber() != null && !l.getQuotationNumber().isBlank()) {
-                        quotationNo = l.getQuotationNumber();
-                    } else if ((quotationNo == null || quotationNo.isBlank()) && l.getLeadRef() != null && !l.getLeadRef().isBlank()) {
-                        quotationNo = l.getLeadRef();
-                    }
-
-                    if (l.getQuotationDate() != null) {
-                        quotationDate = l.getQuotationDate().toString();
-                    }
-
-                    if (l.getInquiryDate() != null) {
-                        inquiryDate = l.getInquiryDate().toString();
-                    }
-                    map.put("uploadDocument", l.getUploadDocument());
-                    map.put("uploadDocument1", l.getUploadDocument1());
-                    map.put("uploadDocument2", l.getUploadDocument2());
-                    map.put("uploadDocument3", l.getUploadDocument3());
-                }
+            // Latest quotation number from Lead or LeadRef fallback
+            if (l.getQuotationNumber() != null && !l.getQuotationNumber().isBlank()) {
+                quotationNo = l.getQuotationNumber();
+            } else if ((quotationNo == null || quotationNo.isBlank()) && l.getLeadRef() != null && !l.getLeadRef().isBlank()) {
+                quotationNo = l.getLeadRef();
             }
+
+            if (l.getQuotationDate() != null) {
+                quotationDate = l.getQuotationDate().toString();
+            }
+
+            if (l.getInquiryDate() != null) {
+                inquiryDate = l.getInquiryDate().toString();
+            }
+            map.put("uploadDocument", l.getUploadDocument());
+            map.put("uploadDocument1", l.getUploadDocument1());
+            map.put("uploadDocument2", l.getUploadDocument2());
+            map.put("uploadDocument3", l.getUploadDocument3());
 
             // Sync back quotationNo if changed or blank in negotiation record
             if (quotationNo != null && !quotationNo.isBlank() && !quotationNo.equalsIgnoreCase(n.getQuotationNo())) {
@@ -196,6 +204,33 @@ public class NegotiationController {
             map.put("remarks", n.getRemarks());
             map.put("userIdFk", n.getUserIdFk());
 
+            if (leadOutcomeStatus == null || leadOutcomeStatus.isBlank()) {
+                leadOutcomeStatus = n.getNegotiationStatus() != null ? n.getNegotiationStatus() : "Negotiation";
+            }
+            if (leadStatus == null || leadStatus.isBlank()) {
+                leadStatus = n.getNegotiationStatus() != null ? n.getNegotiationStatus() : "Negotiation";
+            }
+
+            if (enquiryDescription == null || enquiryDescription.isBlank() || quotationDate == null) {
+                try {
+                    List<NegotiationRevision> revs = negotiationRevisionRepository.findByNegotiationIdOrderByUpdatedDateDesc(n.getId());
+                    if (revs != null && !revs.isEmpty()) {
+                        NegotiationRevision latestRev = revs.get(0);
+                        if ((enquiryDescription == null || enquiryDescription.isBlank()) && latestRev.getEnquiryDescription() != null) {
+                            enquiryDescription = latestRev.getEnquiryDescription();
+                        }
+                        if (quotationDate == null && latestRev.getQuotationDate() != null) {
+                            quotationDate = latestRev.getQuotationDate().toString();
+                        }
+                        if ((n.getQuotationAmount() == null || n.getQuotationAmount().compareTo(java.math.BigDecimal.ZERO) == 0) && latestRev.getQuotationAmount() != null) {
+                            map.put("quotationAmount", latestRev.getQuotationAmount());
+                        }
+                    }
+                } catch (Exception ex) {
+                    log.warn("Failed to fetch revision fallback for negotiation {}: {}", n.getId(), ex.getMessage());
+                }
+            }
+
             // Lead fields
             map.put("leadRef", leadRef);
             map.put("leadStatus", leadStatus);
@@ -208,6 +243,46 @@ public class NegotiationController {
         }
 
         return ResponseEntity.ok(ApiResponse.success("Negotiations fetched", responseList));
+    }
+
+    @GetMapping("/user/{userId}/revisions/all")
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getAllCompanyRevisions(@PathVariable Long userId) {
+        com.crm.entity.User user = userRepository.findById(userId).orElse(null);
+        if (user == null) {
+            return ResponseEntity.ok(ApiResponse.success("Revisions fetched", new ArrayList<>()));
+        }
+        List<Long> companyUserIds = leadService.getCompanyUserIds(user.getUserid(), user.getRole());
+        List<Negotiation> negotiations = negotiationRepository.findByUserIdFkIn(companyUserIds);
+
+        List<Map<String, Object>> allRevisions = new ArrayList<>();
+        Set<String> seenKeys = new HashSet<>();
+
+        for (Negotiation n : negotiations) {
+            List<NegotiationRevision> revs = negotiationRevisionRepository.findByNegotiationIdOrderByUpdatedDateDesc(n.getId());
+            for (NegotiationRevision rev : revs) {
+                String revCode = rev.getQuotationRevision() != null ? rev.getQuotationRevision() : "R0";
+                String key = n.getId() + "-" + revCode.toUpperCase();
+                if (seenKeys.contains(key)) {
+                    continue;
+                }
+                seenKeys.add(key);
+
+                Map<String, Object> map = new HashMap<>();
+                map.put("id", rev.getId());
+                map.put("negotiationId", n.getId());
+                map.put("negotiationName", n.getNegotiationName());
+                map.put("revisionNo", revCode);
+                map.put("quotationNo", rev.getQuotationNo());
+                map.put("quotationAmount", rev.getQuotationAmount() != null ? rev.getQuotationAmount() : n.getQuotationAmount());
+                map.put("negotiationStatus", rev.getNegotiationStatus() != null ? rev.getNegotiationStatus() : n.getNegotiationStatus());
+                map.put("remarks", rev.getRemarks());
+                map.put("enquiryDescription", rev.getEnquiryDescription());
+                map.put("quotationDate", rev.getQuotationDate());
+                map.put("updatedDate", rev.getUpdatedDate());
+                allRevisions.add(map);
+            }
+        }
+        return ResponseEntity.ok(ApiResponse.success("All revisions fetched", allRevisions));
     }
 
 
@@ -242,29 +317,62 @@ public ResponseEntity<ApiResponse<Lead>> getDetails(@PathVariable Long id) {
             }
 
             Negotiation negotiation = nOpt.get();
+            if (negotiation.getLeadIdFk() != null) {
+                Optional<Lead> leadOpt = leadRepository.findById(negotiation.getLeadIdFk());
+                if (leadOpt.isPresent()) {
+                    leadService.ensureR0RevisionExists(negotiation, leadOpt.get());
+                }
+            }
+
+            List<NegotiationRevision> revisions = negotiationRevisionRepository
+                    .findByNegotiationIdOrLeadIdFkOrderByUpdatedDateDesc(negotiation.getId(), leadId);
+
             List<Map<String, Object>> list = new ArrayList<>();
+            Set<String> seenRevisions = new HashSet<>();
 
-            // 2. Add CURRENT negotiation state as the "Active" revision at top
-            Map<String, Object> currentMap = new HashMap<>();
-            currentMap.put("id", "current-" + negotiation.getId());
-            currentMap.put("revisionNo", negotiation.getQuotationRevision() != null ? negotiation.getQuotationRevision() : "Current");
-            currentMap.put("quotationNo", negotiation.getQuotationNo());
-            currentMap.put("quotationAmount", negotiation.getQuotationAmount());
-            currentMap.put("negotiationStatus", negotiation.getNegotiationStatus());
-            currentMap.put("remarks", negotiation.getRemarks());
-            currentMap.put("enquiryDescription", null);
-            currentMap.put("quotationDate", null);
-            currentMap.put("updatedDate", null);
-            currentMap.put("isCurrent", true);
+            String activeRevCode = negotiation.getQuotationRevision() != null ? negotiation.getQuotationRevision() : "R0";
 
-            // Fetch documents for the current negotiation by quotationNo
-            String currentQuotNo = negotiation.getQuotationNo();
-            if (currentQuotNo != null && !currentQuotNo.isBlank()) {
+            for (NegotiationRevision rev : revisions) {
+                String revCode = rev.getQuotationRevision() != null ? rev.getQuotationRevision() : "R0";
+                if (seenRevisions.contains(revCode.toUpperCase())) {
+                    continue;
+                }
+                seenRevisions.add(revCode.toUpperCase());
+
+                Map<String, Object> map = new HashMap<>();
+                map.put("id", rev.getId());
+                map.put("revisionNo", revCode);
+                map.put("quotationNo", rev.getQuotationNo());
+                map.put("quotationAmount", rev.getQuotationAmount());
+                map.put("negotiationStatus", rev.getNegotiationStatus());
+                map.put("remarks", rev.getRemarks());
+                map.put("enquiryDescription", rev.getEnquiryDescription());
+                map.put("quotationDate", rev.getQuotationDate());
+                map.put("updatedDate", rev.getUpdatedDate());
+                map.put("isCurrent", revCode.equalsIgnoreCase(activeRevCode));
+
                 try {
-                    List<Document> currentDocs = documentRepository.findByQuotationNo(currentQuotNo);
-                    if (currentDocs != null && !currentDocs.isEmpty()) {
-                        List<Map<String, Object>> docList = new ArrayList<>();
-                        for (Document doc : currentDocs) {
+                    List<Document> documents = documentRepository.findByNegotiationRevisionId(rev.getId());
+                    if (documents == null || documents.isEmpty()) {
+                        if (rev.getQuotationNo() != null && !rev.getQuotationNo().isBlank()) {
+                            List<Document> byQtn = documentRepository.findByQuotationNo(rev.getQuotationNo());
+                            if (byQtn != null) {
+                                documents = byQtn.stream()
+                                        .filter(d -> d != null && d.getQuotationNo() != null && rev.getQuotationNo().equalsIgnoreCase(d.getQuotationNo()))
+                                        .filter(d -> {
+                                            if ("R0".equalsIgnoreCase(revCode) && d.getFileUrl() != null && d.getFileUrl().contains("/R")) {
+                                                return false;
+                                            }
+                                            return true;
+                                        })
+                                        .collect(Collectors.toList());
+                            }
+                        }
+                    }
+                    List<Map<String, Object>> docList = new ArrayList<>();
+                    if (documents != null) {
+                        for (Document doc : documents) {
+                            if (doc.getIsDeleted() != null && doc.getIsDeleted()) continue;
                             Map<String, Object> docMap = new HashMap<>();
                             docMap.put("id", doc.getId());
                             docMap.put("fileName", doc.getFileName());
@@ -274,68 +382,27 @@ public ResponseEntity<ApiResponse<Lead>> getDetails(@PathVariable Long id) {
                             docMap.put("fileUrl", doc.getFileUrl());
                             docList.add(docMap);
                         }
-                        currentMap.put("documents", docList);
-                        currentMap.put("documentCount", currentDocs.size());
-                    } else {
-                        currentMap.put("documents", new ArrayList<>());
-                        currentMap.put("documentCount", 0);
                     }
+                    if (docList.size() > 1) {
+                        docList = docList.subList(docList.size() - 1, docList.size());
+                    }
+                    map.put("documents", docList);
+                    map.put("documentCount", docList.size());
                 } catch (Exception ex) {
-                    log.warn("Error fetching docs for quotationNo {}: {}", currentQuotNo, ex.getMessage());
-                    currentMap.put("documents", new ArrayList<>());
-                    currentMap.put("documentCount", 0);
+                    map.put("documents", new ArrayList<>());
+                    map.put("documentCount", 0);
                 }
-            } else {
-                currentMap.put("documents", new ArrayList<>());
-                currentMap.put("documentCount", 0);
+                list.add(map);
             }
-            list.add(currentMap);
 
-            // 3. Append historical revisions from crm_negotiation_revision table
-            try {
-                List<NegotiationRevision> revisions =
-                        negotiationRevisionRepository.findByNegotiationIdOrderByUpdatedDateDesc(negotiation.getId());
-                for (NegotiationRevision rev : revisions) {
-                    Map<String, Object> map = new HashMap<>();
-                    map.put("id", rev.getId());
-                    map.put("revisionNo", rev.getQuotationRevision());
-                    map.put("quotationNo", rev.getQuotationNo());
-                    map.put("quotationAmount", rev.getQuotationAmount());
-                    map.put("negotiationStatus", rev.getNegotiationStatus());
-                    map.put("remarks", rev.getRemarks());
-                    map.put("enquiryDescription", rev.getEnquiryDescription());
-                    map.put("quotationDate", rev.getQuotationDate());
-                    map.put("updatedDate", rev.getUpdatedDate());
-                    map.put("isCurrent", false);
-                    try {
-                        List<Document> documents = documentRepository.findByQuotationNo(rev.getQuotationNo());
-                        if (documents != null && !documents.isEmpty()) {
-                            List<Map<String, Object>> docList = new ArrayList<>();
-                            for (Document doc : documents) {
-                                Map<String, Object> docMap = new HashMap<>();
-                                docMap.put("id", doc.getId());
-                                docMap.put("fileName", doc.getFileName());
-                                docMap.put("fileSize", doc.getFileSize());
-                                docMap.put("fileType", doc.getFileType());
-                                docMap.put("uploadedDate", doc.getUploadedDate());
-                                docMap.put("fileUrl", doc.getFileUrl());
-                                docList.add(docMap);
-                            }
-                            map.put("documents", docList);
-                            map.put("documentCount", documents.size());
-                        } else {
-                            map.put("documents", new ArrayList<>());
-                            map.put("documentCount", 0);
-                        }
-                    } catch (Exception ex) {
-                        map.put("documents", new ArrayList<>());
-                        map.put("documentCount", 0);
-                    }
-                    list.add(map);
-                }
-            } catch (Exception ex) {
-                log.warn("Error fetching revision history for negotiation {}: {}", negotiation.getId(), ex.getMessage());
-            }
+            list.sort((a, b) -> {
+                String rA = String.valueOf(a.get("revisionNo"));
+                String rB = String.valueOf(b.get("revisionNo"));
+                int numA = 0, numB = 0;
+                try { numA = Integer.parseInt(rA.replaceAll("[^0-9]", "")); } catch (Exception e) {}
+                try { numB = Integer.parseInt(rB.replaceAll("[^0-9]", "")); } catch (Exception e) {}
+                return Integer.compare(numA, numB);
+            });
 
             return ResponseEntity.ok(ApiResponse.success("Revision history fetched", list));
         } catch (Exception e) {
@@ -367,11 +434,19 @@ public ResponseEntity<ApiResponse<Lead>> getDetails(@PathVariable Long id) {
         }
 
         List<Map<String, Object>> list = new ArrayList<>();
+        Set<String> seenRevisions = new HashSet<>();
+
         for (NegotiationRevision rev : revisions) {
+            String revCode = rev.getQuotationRevision() != null ? rev.getQuotationRevision() : "R0";
+            if (seenRevisions.contains(revCode.toUpperCase())) {
+                continue;
+            }
+            seenRevisions.add(revCode.toUpperCase());
+
             Map<String, Object> map = new HashMap<>();
 
             map.put("id", rev.getId());
-            map.put("revisionNo", rev.getQuotationRevision() != null ? rev.getQuotationRevision() : "R0");
+            map.put("revisionNo", revCode);
             map.put("quotationNo", rev.getQuotationNo());
             map.put("quotationAmount", rev.getQuotationAmount());
             map.put("negotiationStatus", rev.getNegotiationStatus());
@@ -380,19 +455,26 @@ public ResponseEntity<ApiResponse<Lead>> getDetails(@PathVariable Long id) {
             map.put("quotationDate", rev.getQuotationDate());
             map.put("updatedDate", rev.getUpdatedDate());
             
-            // Get documents using quotationNo or revision ID
-            String quotationNo = rev.getQuotationNo();
-            List<Document> documents = null;
-            if (quotationNo != null && !quotationNo.isBlank()) {
-                documents = documentRepository.findByQuotationNo(quotationNo);
-            }
+            // Get documents using revision ID or exact quotationNo match
+            List<Document> documents = documentRepository.findByNegotiationRevisionId(rev.getId());
             if (documents == null || documents.isEmpty()) {
-                documents = documentRepository.findByNegotiationRevisionId(rev.getId());
+                String quotationNo = rev.getQuotationNo();
+                if (quotationNo != null && !quotationNo.isBlank()) {
+                    List<Document> byQtn = documentRepository.findByQuotationNo(quotationNo);
+                    if (byQtn != null) {
+                        documents = byQtn.stream()
+                                .filter(d -> d != null && d.getQuotationNo() != null && quotationNo.equalsIgnoreCase(d.getQuotationNo()))
+                                .collect(Collectors.toList());
+                    }
+                }
             }
             
             if (documents != null && !documents.isEmpty()) {
                 List<Map<String, Object>> docList = new ArrayList<>();
                 for (Document doc : documents) {
+                    if (doc.getIsDeleted() != null && doc.getIsDeleted()) {
+                        continue;
+                    }
                     Map<String, Object> docMap = new HashMap<>();
                     docMap.put("id", doc.getId());
                     docMap.put("fileName", doc.getFileName());
@@ -402,8 +484,11 @@ public ResponseEntity<ApiResponse<Lead>> getDetails(@PathVariable Long id) {
                     docMap.put("fileUrl", doc.getFileUrl());
                     docList.add(docMap);
                 }
+                if (docList.size() > 1) {
+                    docList = docList.subList(docList.size() - 1, docList.size());
+                }
                 map.put("documents", docList);
-                map.put("documentCount", documents.size());
+                map.put("documentCount", docList.size());
             } else {
                 List<Map<String, Object>> docList = new ArrayList<>();
                 if (negotiation.getLeadIdFk() != null) {
@@ -439,6 +524,15 @@ public ResponseEntity<ApiResponse<Lead>> getDetails(@PathVariable Long id) {
 
             list.add(map);
         }
+
+        list.sort((a, b) -> {
+            String rA = String.valueOf(a.get("revisionNo"));
+            String rB = String.valueOf(b.get("revisionNo"));
+            int numA = 0, numB = 0;
+            try { numA = Integer.parseInt(rA.replaceAll("[^0-9]", "")); } catch (Exception e) {}
+            try { numB = Integer.parseInt(rB.replaceAll("[^0-9]", "")); } catch (Exception e) {}
+            return Integer.compare(numA, numB);
+        });
 
         return ResponseEntity.ok(ApiResponse.success("Revision history fetched", list));
     }

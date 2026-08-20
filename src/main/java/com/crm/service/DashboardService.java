@@ -38,25 +38,25 @@ public class DashboardService {
             projectCount = projectRepository.count();
         } else {
             List<Long> companyUserIds = leadService.getCompanyUserIds(user.getUserid(), user.getRole());
-            if (companyUserIds.isEmpty()) companyUserIds = List.of(user.getUserid(), 0L);
+            if (companyUserIds.isEmpty()) companyUserIds = List.of(user.getUserid());
 
             String scopeMode = authUtil.resolveDataScopeMode(user, "LEADS");
+            List<Long> scopedUserIds;
             if ("ALL_DATA".equals(scopeMode) || authUtil.isAdmin(user.getRole())) {
-                leadStatusMap = buildStatusMap(leadRepository.countGroupByStatusForUserIds(companyUserIds));
-                oppStatusMap  = buildStatusMap(opportunityRepository.countGroupByStatusForUserIds(companyUserIds));
-                projStatusMap = buildStatusMap(projectRepository.countGroupByStatusForUserIds(companyUserIds));
-                leadSourceMap = buildStatusMap(leadRepository.countGroupBySourceForUserIds(companyUserIds));
-                leadAllCount = leadRepository.countByUserIdFkIn(companyUserIds);
-                projectCount = projectRepository.countByUserIdFkIn(companyUserIds);
+                scopedUserIds = companyUserIds;
+            } else if ("TEAM_DATA".equals(scopeMode) || authUtil.isTeamLead(user.getRole())) {
+                scopedUserIds = authUtil.getTeamLeadMemberUserIds(user);
+                if (scopedUserIds.isEmpty()) scopedUserIds = List.of(user.getUserid());
             } else {
-                List<Long> ownUserIds = List.of(user.getUserid());
-                leadStatusMap = buildStatusMap(leadRepository.countGroupByStatusForUserIds(ownUserIds));
-                oppStatusMap  = buildStatusMap(opportunityRepository.countGroupByStatusForUserIds(ownUserIds));
-                projStatusMap = buildStatusMap(projectRepository.countGroupByStatusForUserIds(ownUserIds));
-                leadSourceMap = buildStatusMap(leadRepository.countGroupBySourceForUserIds(ownUserIds));
-                leadAllCount = leadRepository.countByUserIdFkIn(ownUserIds);
-                projectCount = projectRepository.countByUserIdFkIn(ownUserIds);
+                scopedUserIds = List.of(user.getUserid());
             }
+
+            leadStatusMap = buildStatusMap(leadRepository.countGroupByStatusForUserIds(scopedUserIds));
+            oppStatusMap  = buildStatusMap(opportunityRepository.countGroupByStatusForUserIds(scopedUserIds));
+            projStatusMap = buildStatusMap(projectRepository.countGroupByStatusForUserIds(scopedUserIds));
+            leadSourceMap = buildStatusMap(leadRepository.countGroupBySourceForUserIds(scopedUserIds));
+            leadAllCount = leadRepository.countByUserIdFkIn(scopedUserIds);
+            projectCount = projectRepository.countByUserIdFkIn(scopedUserIds);
         }
 
         List<Map<String, Object>> leadChartData = buildChartList(leadStatusMap);

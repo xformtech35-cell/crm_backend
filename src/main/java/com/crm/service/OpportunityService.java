@@ -38,8 +38,7 @@ public class OpportunityService {
             return opportunityRepository.findByUserIdFkIn(teamUserIds);
         }
         // OWN_DATA_ONLY
-        List<Long> companyUserIds = leadService.getCompanyUserIds(userId, role);
-        return opportunityRepository.findByUserIdFkIn(companyUserIds);
+        return opportunityRepository.findByUserIdFk(userId);
     }
 
     public Opportunity getById(Long id) {
