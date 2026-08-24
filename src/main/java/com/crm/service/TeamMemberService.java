@@ -52,20 +52,35 @@ public class TeamMemberService {
                 Long companyId = authUtil.getCompanyAdminId(user);
                 members = teamMemberRepository.findByUserIdFk(companyId != null ? companyId : userId);
             } else if ("TEAM_DATA".equals(scopeMode)) {
+                List<Long> teamIds = authUtil.getTeamLeadTeamIds(user);
                 List<String> teammateEmails = authUtil.getTeamLeadMemberEmails(user);
                 Long companyId = authUtil.getCompanyAdminId(user);
                 List<TeamMember> companyMembers = teamMemberRepository.findByUserIdFk(companyId != null ? companyId : userId);
                 
-                members = companyMembers.stream()
-                        .filter(tm -> {
-                            if (tm.getTeamMemberEmail() == null) return false;
-                            String email = tm.getTeamMemberEmail().trim().toLowerCase();
-                            // Include assigned team members OR unassigned company members so Team Lead can assign them
-                            boolean isTeammate = teammateEmails.contains(email);
-                            boolean isUnassigned = (tm.getTeamIdFk() == null);
-                            return isTeammate || isUnassigned;
-                        })
-                        .collect(java.util.stream.Collectors.toList());
+                java.util.Set<Long> seenIds = new java.util.HashSet<>();
+                members = new java.util.ArrayList<>();
+                
+                if (teamIds != null) {
+                    for (Long tId : teamIds) {
+                        List<TeamMember> tMembers = teamMemberRepository.findByTeamIdFk(tId);
+                        for (TeamMember tm : tMembers) {
+                            if (tm != null && tm.getTeamMemberId() != null && !seenIds.contains(tm.getTeamMemberId())) {
+                                seenIds.add(tm.getTeamMemberId());
+                                members.add(tm);
+                            }
+                        }
+                    }
+                }
+                
+                for (TeamMember tm : companyMembers) {
+                    if (tm != null && tm.getTeamMemberEmail() != null) {
+                        String email = tm.getTeamMemberEmail().trim().toLowerCase();
+                        if ((teammateEmails.contains(email) || tm.getTeamIdFk() == null) && tm.getTeamMemberId() != null && !seenIds.contains(tm.getTeamMemberId())) {
+                            seenIds.add(tm.getTeamMemberId());
+                            members.add(tm);
+                        }
+                    }
+                }
             } else {
                 // OWN_DATA_ONLY
                 if (user != null && user.getUserEmail() != null) {
@@ -79,38 +94,6 @@ public class TeamMemberService {
         }
         for (TeamMember member : members) {
             populateUserFields(member);
-        }
-
-        // Ensure Company Admin user associated with this team is included in the list for visibility
-        if (role != null && !authUtil.isSuperAdmin(role)) {
-            User user = userRepository.findById(userId).orElse(null);
-            if (user != null) {
-                Long companyAdminId = authUtil.getCompanyAdminId(user);
-                if (companyAdminId != null) {
-                    Optional<User> adminOpt = userRepository.findById(companyAdminId);
-                    if (adminOpt.isPresent()) {
-                        User adminUser = adminOpt.get();
-                        boolean adminInList = members.stream().anyMatch(m ->
-                            (m.getTeamMemberEmail() != null && m.getTeamMemberEmail().equalsIgnoreCase(adminUser.getUserEmail()))
-                        );
-                        if (!adminInList && adminUser.getUserEmail() != null) {
-                            Long adminRoleId = roleRepository.findByUserIdFk(adminUser.getUserid())
-                                    .stream().filter(r -> "ADMIN".equalsIgnoreCase(r.getRoleName()))
-                                    .map(com.crm.entity.Role::getRoleId).findFirst().orElse(null);
-
-                            TeamMember adminTm = TeamMember.builder()
-                                    .teamMemberId(-adminUser.getUserid())
-                                    .teamMemberName(adminUser.getUsername() != null && !adminUser.getUsername().isBlank() ? adminUser.getUsername() : "Company Admin")
-                                    .teamMemberEmail(adminUser.getUserEmail())
-                                    .teamMemberMobile("")
-                                    .userIdFk(adminUser.getUserid())
-                                    .teamMemberRole(adminRoleId)
-                                    .build();
-                            members.add(0, adminTm);
-                        }
-                    }
-                }
-            }
         }
 
         return members;
