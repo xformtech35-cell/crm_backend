@@ -339,4 +339,32 @@ public class AuthService {
             return perms;
         }).orElse(List.of());
     }
+
+    public void updateProfile(Long userId, java.util.Map<String, String> body) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User", "id", userId));
+        if (body.containsKey("username") && body.get("username") != null && !body.get("username").trim().isEmpty()) {
+            user.setUsername(body.get("username").trim());
+        }
+        if (body.containsKey("userEmail") && body.get("userEmail") != null && !body.get("userEmail").trim().isEmpty()) {
+            user.setUserEmail(body.get("userEmail").trim());
+        }
+        if (body.containsKey("phone")) {
+            user.setPhone(body.get("phone"));
+        }
+        if (body.containsKey("designation")) {
+            user.setDesignation(body.get("designation"));
+        }
+        userRepository.save(user);
+
+        teamMemberRepository.findByTeamMemberEmail(user.getUserEmail()).ifPresent(tm -> {
+            if (body.containsKey("username") && body.get("username") != null && !body.get("username").trim().isEmpty()) {
+                tm.setTeamMemberName(body.get("username").trim());
+            }
+            if (body.containsKey("phone")) {
+                tm.setTeamMemberMobile(body.get("phone"));
+            }
+            teamMemberRepository.save(tm);
+        });
+    }
 }

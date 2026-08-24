@@ -1,0 +1,138 @@
+
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+<meta charset="utf-8">
+<title>Client-Level ERP Operations Guide & Flow Diagram</title>
+<style>
+    body { font-family: "Segoe UI", Arial, sans-serif; line-height: 1.6; color: #1e293b; padding: 20px; }
+    h1 { color: #0f172a; font-size: 24px; border-bottom: 2px solid #2563eb; padding-bottom: 6px; margin-top: 30px; }
+    h2 { color: #1e293b; font-size: 18px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; margin-top: 25px; }
+    h3 { color: #3b82f6; font-size: 15px; margin-top: 15px; }
+    p { margin-bottom: 12px; }
+    ul { margin-bottom: 15px; padding-left: 20px; }
+    li { margin-bottom: 4px; }
+    code { font-family: "Courier New", Courier, monospace; background-color: #f1f5f9; padding: 1px 5px; border-radius: 4px; font-size: 12px; color: #0f172a; }
+    
+    .nav-box { background-color: #f8fafc; border-left: 4px solid #3b82f6; padding: 12px 18px; margin: 15px 0; border-radius: 4px; }
+    .nav-title { font-weight: bold; color: #1e3a8a; margin-bottom: 6px; }
+    
+    .flow-box { background-color: #f1f5f9; border: 1px solid #e2e8f0; padding: 15px; margin: 15px 0; border-radius: 6px; text-align: center; }
+    .flow-step { display: inline-block; background-color: #3b82f6; color: #ffffff; padding: 6px 12px; border-radius: 4px; font-weight: bold; font-size: 12px; margin: 5px; }
+    .flow-arrow { display: inline-block; color: #64748b; font-weight: bold; padding: 0 5px; }
+</style>
+</head>
+<body>
+
+<div style="text-align: center; margin-bottom: 40px; border-bottom: 3px double #2563eb; padding-bottom: 15px;">
+    <h1 style="font-size: 28px; color: #1e3a8a; border: none; margin-bottom: 5px;">ERP OPERATIONS MANUAL</h1>
+    <h2 style="font-size: 18px; color: #64748b; border: none; margin-top: 0;">Client-Level Module Guidelines & Flow Diagrams</h2>
+    <p style="font-size: 12px; color: #94a3b8;">Generated on 16-Jun-2026 12:43</p>
+</div>
+
+<h1>1. Overall System Architecture Flow</h1>
+<div class="flow-box">
+    <div class="flow-step">1. Masters Setup</div>
+    <div class="flow-arrow">&rarr;</div>
+    <div class="flow-step">2. Design & Engineering</div>
+    <div class="flow-arrow">&rarr;</div>
+    <div class="flow-step">3. Sales Order (OC)</div>
+    <div class="flow-arrow">&rarr;</div>
+    <div class="flow-step">4. MRP Execution</div>
+    <br><br>
+    <div class="flow-step" style="background-color: #dc2626;">5a. PR / Procurement (Shortage)</div>
+    <div class="flow-arrow">&larr; (After Stock Inward) &rarr;</div>
+    <div class="flow-step" style="background-color: #16a34a;">5b. Job Orders (Stock OK)</div>
+    <br><br>
+    <div class="flow-step" style="background-color: #16a34a;">6. Material Allocation</div>
+    <div class="flow-arrow">&rarr;</div>
+    <div class="flow-step" style="background-color: #16a34a;">7. Material Issue Slip (MIS)</div>
+    <div class="flow-arrow">&rarr;</div>
+    <div class="flow-step">8. Packing & Dispatch</div>
+    <div class="flow-arrow">&rarr;</div>
+    <div class="flow-step">9. Invoice & Accounts</div>
+</div>
+
+<h1>2. Step-by-Step Module Guidelines</h1>
+
+<h2>Phase 1: Project & Drawing Setup (Engineering)</h2>
+<div class="nav-box">
+    <div class="nav-title"><w:sym w:font="Wingdings" w:char="F0DF"/> Project Creation Path</div>
+    Go to <strong>Projects</strong> &rarr; <strong>Add Project</strong>. Enter name, select customer, and create a unique Project Code.
+</div>
+<div class="nav-box">
+    <div class="nav-title"><w:sym w:font="Wingdings" w:char="F0DF"/> Drawing Path</div>
+    Go to <strong>Drawing Module</strong> &rarr; <strong>Add Drawing</strong>. Upload drawing details and link to the Project Code.
+</div>
+
+<h2>Phase 2: Product & BOM Engineering</h2>
+<div class="nav-box">
+    <div class="nav-title"><w:sym w:font="Wingdings" w:char="F0DF"/> Item Master Setup Path</div>
+    Go to <strong>Inventory</strong> &rarr; <strong>Add Item</strong>. Setup raw materials, categories, and codes.
+</div>
+<div class="nav-box">
+    <div class="nav-title"><w:sym w:font="Wingdings" w:char="F0DF"/> BOM Creation Path</div>
+    Go to <strong>Design / Production</strong> &rarr; <strong>BOM</strong> &rarr; <strong>Create BOM</strong>. Select finished good, link Project Code, and define components.
+</div>
+
+<h2>Phase 3: Sales Order Booking (Commercial)</h2>
+<div class="nav-box">
+    <div class="nav-title"><w:sym w:font="Wingdings" w:char="F0DF"/> Sales Order Booking Path</div>
+    Go to <strong>Sales</strong> &rarr; <strong>Sales Order</strong> &rarr; <strong>Create Sales Order</strong>. Link the order to the Project Code.
+</div>
+
+<h2>Phase 4: MRP Planning & Stock Checking (Planning)</h2>
+<div class="nav-box">
+    <div class="nav-title"><w:sym w:font="Wingdings" w:char="F0DF"/> MRP Execution Path</div>
+    Go to <strong>Store / MRP</strong> &rarr; <strong>BOM Order MRP</strong>. Click <strong>Run MRP</strong> next to the target Sales Order.
+</div>
+
+<h2>Phase 5: Shortage Procurement Flow (Purchase & Store)</h2>
+<div class="nav-box">
+    <div class="nav-title"><w:sym w:font="Wingdings" w:char="F0DF"/> PR Path</div>
+    On the <strong>MRP Run details page</strong>, check shortages and click <strong>Generate PR for Selected</strong>.
+</div>
+<div class="nav-box">
+    <div class="nav-title"><w:sym w:font="Wingdings" w:char="F0DF"/> RFQ & Comparative Statement Path</div>
+    Go to <strong>Purchasing</strong> &rarr; <strong>RFQ</strong> &rarr; <strong>Create</strong>. Log supplier responses under <strong>Vendor Quotations</strong>.
+</div>
+<div class="nav-box">
+    <div class="nav-title"><w:sym w:font="Wingdings" w:char="F0DF"/> PO & GRN Path</div>
+    Award PO. Upon goods arrival, go to <strong>Store</strong> &rarr; <strong>GRN</strong> &rarr; <strong>Inward Goods</strong> to verify and accept inventory.
+</div>
+
+<h2>Phase 6: Work Order Execution (Production)</h2>
+<div class="nav-box">
+    <div class="nav-title"><w:sym w:font="Wingdings" w:char="F0DF"/> Create Work Orders Path</div>
+    Go to <strong>Store / MRP</strong> &rarr; <strong>BOM Order MRP</strong> &rarr; <strong>Run MRP</strong>. Click <strong>Create Job Order</strong>.
+</div>
+
+<h2>Phase 7: Two-Step Material Allocation (Store Reservation)</h2>
+<div class="nav-box">
+    <div class="nav-title"><w:sym w:font="Wingdings" w:char="F0DF"/> Allocation / Reservation Path</div>
+    Go to <strong>BOM Order MRP Details</strong> or the <strong>Job Order MRP</strong> page. Click <strong>Allocate</strong> next to Stock OK items.
+</div>
+
+<h2>Phase 8: Material Issue & Shop Floor Release (Store Deduction)</h2>
+<div class="nav-box">
+    <div class="nav-title"><w:sym w:font="Wingdings" w:char="F0DF"/> Material Issue Slip (MIS) Path</div>
+    Go to <strong>Store / MRP</strong> &rarr; <strong>Material Issue</strong> &rarr; <strong>Create Issue Slip</strong>. Select Job Order and submit to deduct stock.
+</div>
+
+<h2>Phase 9: Dispatch & Delivery (Logistics)</h2>
+<div class="nav-box">
+    <div class="nav-title"><w:sym w:font="Wingdings" w:char="F0DF"/> Delivery Challan Path</div>
+    Go to <strong>Sales</strong> &rarr; <strong>Delivery Challan</strong> &rarr; <strong>Create</strong>. Fill in details and print the challan.
+</div>
+
+<h2>Phase 10: Invoicing & Receipt Reconciliation (Accounts)</h2>
+<div class="nav-box">
+    <div class="nav-title"><w:sym w:font="Wingdings" w:char="F0DF"/> Commercial Invoicing Path</div>
+    Go to <strong>Accounts</strong> &rarr; <strong>Invoice</strong> &rarr; <strong>Generate Invoice</strong>. Load Delivery Challan and invoice client.
+</div>
+<div class="nav-box">
+    <div class="nav-title"><w:sym w:font="Wingdings" w:char="F0DF"/> Accounts Receipts Path</div>
+    Go to <strong>Accounts</strong> &rarr; <strong>Receipts</strong> &rarr; <strong>Add Receipt</strong> to record payments.
+</div>
+
+</body>
+</html>

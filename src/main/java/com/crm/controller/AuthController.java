@@ -54,4 +54,13 @@ public class AuthController {
         authService.resetPassword(request);
         return ResponseEntity.ok(ApiResponse.success("Password reset successfully. You can now log in.", null));
     }
+
+    @PutMapping("/profile")
+    public ResponseEntity<ApiResponse<Void>> updateProfile(
+            @RequestBody Map<String, String> body,
+            Authentication auth) {
+        User user = authUtil.getCurrentUser(auth);
+        authService.updateProfile(user.getUserid(), body);
+        return ResponseEntity.ok(ApiResponse.success("Profile updated successfully", null));
+    }
 }

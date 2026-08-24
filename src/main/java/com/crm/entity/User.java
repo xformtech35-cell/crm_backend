@@ -29,8 +29,11 @@ public class User {
     @Column(nullable = false)
     private String role;
 
-    // @Column(name = "department")
-    // private String department;
+    @Column(name = "phone")
+    private String phone;
+
+    @Column(name = "designation")
+    private String designation;
 
     @Column(name = "created_date")
     private LocalDate createdDate;

@@ -43,4 +43,12 @@ public class TaskTimeLogController {
     public ResponseEntity<ApiResponse<List<TaskTimeLog>>> getUserLogs(@PathVariable Long userId) {
         return ResponseEntity.ok(ApiResponse.success("User logs", taskTimeLogService.getLogsByUserId(userId)));
     }
+
+    @GetMapping("/active")
+    public ResponseEntity<ApiResponse<TaskTimeLog>> getActiveTimer(Authentication auth) {
+        User user = authUtil.getCurrentUser(auth);
+        TaskTimeLog activeLog = taskTimeLogService.getActiveTimerForUser(user.getUserid());
+        return ResponseEntity.ok(ApiResponse.success("Active timer fetched", activeLog));
+    }
 }
+

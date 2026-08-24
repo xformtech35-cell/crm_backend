@@ -32,9 +32,19 @@ public class ContactService {
         if ("TEAM_DATA".equals(scopeMode)) {
             List<Long> teamUserIds = authUtil.getTeamLeadMemberUserIds(user);
             if (teamUserIds.isEmpty()) teamUserIds = List.of(-1L);
-            return contactRepository.findByUserIdFkIn(teamUserIds);
+            List<Contact> contacts = contactRepository.findByUserIdFkIn(teamUserIds);
+            if (contacts.isEmpty()) {
+                List<Long> companyUserIds = leadService.getCompanyUserIds(userId, role);
+                return contactRepository.findByUserIdFkIn(companyUserIds);
+            }
+            return contacts;
         }
-        return contactRepository.findByUserIdFk(userId);
+        List<Contact> userContacts = contactRepository.findByUserIdFk(userId);
+        if (userContacts.isEmpty()) {
+            List<Long> companyUserIds = leadService.getCompanyUserIds(userId, role);
+            return contactRepository.findByUserIdFkIn(companyUserIds);
+        }
+        return userContacts;
     }
 
     public Contact getById(Long id) {

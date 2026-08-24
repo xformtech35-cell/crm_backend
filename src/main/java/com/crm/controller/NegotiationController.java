@@ -52,6 +52,7 @@ public class NegotiationController {
     private final LeadRepository leadRepository;
     private final com.crm.repository.UserRepository userRepository;
     private final com.crm.service.LeadService leadService;
+    private final com.crm.util.AuthUtil authUtil;
     
     private final NegotiationService negotiationService;
 
@@ -114,15 +115,48 @@ public class NegotiationController {
         if (user == null) {
             return ResponseEntity.ok(ApiResponse.success("Negotiations fetched", new ArrayList<>()));
         }
-        List<Long> companyUserIds = leadService.getCompanyUserIds(user.getUserid(), user.getRole());
-
-        // Query negotiations for companyUserIds
-        List<Negotiation> negotiations;
-        if (user != null && ("SUPER_ADMIN".equalsIgnoreCase(user.getRole()) || "SUPER ADMIN".equalsIgnoreCase(user.getRole()))) {
-            negotiations = negotiationRepository.findAll();
-        } else {
-            negotiations = negotiationRepository.findByUserIdFkIn(companyUserIds);
+        
+        // Fetch all leads accessible to the user (respects company, team lead, and own data scope)
+        List<Lead> accessibleLeads = leadService.getAllLeads(user.getUserid(), user.getRole());
+        for (Lead l : accessibleLeads) {
+            boolean isLeadInNeg = "Negotiation".equalsIgnoreCase(l.getLeadStatus()) || "Negotiation".equalsIgnoreCase(l.getLeadOutcomeStatus());
+            if (isLeadInNeg) {
+                try {
+                    leadService.syncNegotiationForLead(l);
+                } catch (Exception ex) {
+                    log.warn("syncNegotiationForLead failed for lead {}: {}", l.getLeadId(), ex.getMessage());
+                }
+            }
         }
+
+        String scopeMode = authUtil.resolveDataScopeMode(user, "NEGOTIATIONS");
+        List<Long> scopedUserIds;
+        if ("ALL_DATA".equals(scopeMode) || authUtil.isAdmin(user.getRole())) {
+            scopedUserIds = leadService.getCompanyUserIds(user.getUserid(), user.getRole());
+        } else if ("TEAM_DATA".equals(scopeMode) || authUtil.isTeamLead(user.getRole())) {
+            scopedUserIds = authUtil.getTeamLeadMemberUserIds(user);
+        } else {
+            scopedUserIds = List.of(user.getUserid());
+        }
+
+        Set<Long> accessibleLeadIds = accessibleLeads.stream()
+                .map(Lead::getLeadId)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        Set<Negotiation> negSet = new HashSet<>();
+        if (user != null && ("SUPER_ADMIN".equalsIgnoreCase(user.getRole()) || "SUPER ADMIN".equalsIgnoreCase(user.getRole()))) {
+            negSet.addAll(negotiationRepository.findAll());
+        } else {
+            if (scopedUserIds != null && !scopedUserIds.isEmpty()) {
+                negSet.addAll(negotiationRepository.findByUserIdFkIn(scopedUserIds));
+            }
+            if (!accessibleLeadIds.isEmpty()) {
+                negSet.addAll(negotiationRepository.findByLeadIdFkIn(new ArrayList<>(accessibleLeadIds)));
+            }
+        }
+
+        List<Negotiation> negotiations = new ArrayList<>(negSet);
 
         List<Map<String, Object>> responseList = new ArrayList<>();
 
@@ -251,8 +285,34 @@ public class NegotiationController {
         if (user == null) {
             return ResponseEntity.ok(ApiResponse.success("Revisions fetched", new ArrayList<>()));
         }
-        List<Long> companyUserIds = leadService.getCompanyUserIds(user.getUserid(), user.getRole());
-        List<Negotiation> negotiations = negotiationRepository.findByUserIdFkIn(companyUserIds);
+        String scopeMode = authUtil.resolveDataScopeMode(user, "NEGOTIATIONS");
+        List<Long> scopedUserIds;
+        if ("ALL_DATA".equals(scopeMode) || authUtil.isAdmin(user.getRole())) {
+            scopedUserIds = leadService.getCompanyUserIds(user.getUserid(), user.getRole());
+        } else if ("TEAM_DATA".equals(scopeMode) || authUtil.isTeamLead(user.getRole())) {
+            scopedUserIds = authUtil.getTeamLeadMemberUserIds(user);
+        } else {
+            scopedUserIds = List.of(user.getUserid());
+        }
+        List<Lead> accessibleLeads = leadService.getAllLeads(user.getUserid(), user.getRole());
+        Set<Long> accessibleLeadIds = accessibleLeads.stream()
+                .map(Lead::getLeadId)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        Set<Negotiation> negSet = new HashSet<>();
+        if (user != null && ("SUPER_ADMIN".equalsIgnoreCase(user.getRole()) || "SUPER ADMIN".equalsIgnoreCase(user.getRole()))) {
+            negSet.addAll(negotiationRepository.findAll());
+        } else {
+            if (scopedUserIds != null && !scopedUserIds.isEmpty()) {
+                negSet.addAll(negotiationRepository.findByUserIdFkIn(scopedUserIds));
+            }
+            if (!accessibleLeadIds.isEmpty()) {
+                negSet.addAll(negotiationRepository.findByLeadIdFkIn(new ArrayList<>(accessibleLeadIds)));
+            }
+        }
+
+        List<Negotiation> negotiations = new ArrayList<>(negSet);
 
         List<Map<String, Object>> allRevisions = new ArrayList<>();
         Set<String> seenKeys = new HashSet<>();

@@ -33,12 +33,25 @@ public class OpportunityService {
             return opportunityRepository.findByUserIdFkIn(companyUserIds);
         }
         if ("TEAM_DATA".equals(scopeMode)) {
+            List<com.crm.entity.Lead> teamLeads = leadService.getAllLeads(userId, role);
+            List<Long> leadIds = teamLeads.stream().map(com.crm.entity.Lead::getLeadId).filter(java.util.Objects::nonNull).collect(java.util.stream.Collectors.toList());
             List<Long> teamUserIds = authUtil.getTeamLeadMemberUserIds(user);
             if (teamUserIds.isEmpty()) teamUserIds = List.of(-1L);
-            return opportunityRepository.findByUserIdFkIn(teamUserIds);
+            final List<Long> finalTeamUserIds = teamUserIds;
+
+            return opportunityRepository.findAll().stream()
+                    .filter(o -> (o.getLeadIdFk() != null && leadIds.contains(o.getLeadIdFk())) ||
+                                 (o.getUserIdFk() != null && finalTeamUserIds.contains(o.getUserIdFk())))
+                    .collect(java.util.stream.Collectors.toList());
         }
         // OWN_DATA_ONLY
-        return opportunityRepository.findByUserIdFk(userId);
+        List<com.crm.entity.Lead> ownLeads = leadService.getAllLeads(userId, role);
+        List<Long> ownLeadIds = ownLeads.stream().map(com.crm.entity.Lead::getLeadId).filter(java.util.Objects::nonNull).collect(java.util.stream.Collectors.toList());
+
+        return opportunityRepository.findAll().stream()
+                .filter(o -> (o.getLeadIdFk() != null && ownLeadIds.contains(o.getLeadIdFk())) ||
+                             (o.getUserIdFk() != null && o.getUserIdFk().equals(userId)))
+                .collect(java.util.stream.Collectors.toList());
     }
 
     public Opportunity getById(Long id) {

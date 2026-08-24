@@ -74,19 +74,19 @@ public interface LeadRepository extends JpaRepository<Lead, Long>, JpaSpecificat
     @Query("SELECT COUNT(l) FROM Lead l WHERE (l.userIdFk IN :userIds OR l.leadAssignedMember IN :userIds)")
     long countByUserIdFkIn(@Param("userIds") List<Long> userIds);
 
-    @Query("SELECT l.leadStatus AS status, COUNT(l) AS count FROM Lead l GROUP BY l.leadStatus")
+    @Query("SELECT COALESCE(NULLIF(l.leadOutcomeStatus, ''), NULLIF(l.leadStatus, ''), 'Open') AS status, COUNT(l) AS count FROM Lead l GROUP BY COALESCE(NULLIF(l.leadOutcomeStatus, ''), NULLIF(l.leadStatus, ''), 'Open')")
     List<Object[]> countGroupByStatus();
 
     @Query("SELECT l.leadSource AS source, COUNT(l) AS count FROM Lead l GROUP BY l.leadSource")
     List<Object[]> countGroupBySource();
 
-    @Query("SELECT l.leadStatus AS status, COUNT(l) AS count FROM Lead l WHERE l.userIdFk = :userId GROUP BY l.leadStatus")
+    @Query("SELECT COALESCE(NULLIF(l.leadOutcomeStatus, ''), NULLIF(l.leadStatus, ''), 'Open') AS status, COUNT(l) AS count FROM Lead l WHERE l.userIdFk = :userId GROUP BY COALESCE(NULLIF(l.leadOutcomeStatus, ''), NULLIF(l.leadStatus, ''), 'Open')")
     List<Object[]> countGroupByStatusForUser(@Param("userId") Long userId);
 
     @Query("SELECT l.leadSource AS source, COUNT(l) AS count FROM Lead l WHERE l.userIdFk = :userId GROUP BY l.leadSource")
     List<Object[]> countGroupBySourceForUser(@Param("userId") Long userId);
 
-    @Query("SELECT l.leadStatus AS status, COUNT(l) AS count FROM Lead l WHERE (l.userIdFk IN :userIds OR l.leadAssignedMember IN :userIds) GROUP BY l.leadStatus")
+    @Query("SELECT COALESCE(NULLIF(l.leadOutcomeStatus, ''), NULLIF(l.leadStatus, ''), 'Open') AS status, COUNT(l) AS count FROM Lead l WHERE (l.userIdFk IN :userIds OR l.leadAssignedMember IN :userIds) GROUP BY COALESCE(NULLIF(l.leadOutcomeStatus, ''), NULLIF(l.leadStatus, ''), 'Open')")
     List<Object[]> countGroupByStatusForUserIds(@Param("userIds") List<Long> userIds);
 
     @Query("SELECT l.leadSource AS source, COUNT(l) AS count FROM Lead l WHERE (l.userIdFk IN :userIds OR l.leadAssignedMember IN :userIds) GROUP BY l.leadSource")

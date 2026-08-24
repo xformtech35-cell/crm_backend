@@ -192,6 +192,17 @@ public class Lead {
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", shape = JsonFormat.Shape.STRING)
     private LocalDateTime updatedDate;
 
+    @Column(name = "send_to_main_leads")
+    private Boolean sendToMainLeads = false;
+
+    public Boolean getSendToMainLeads() {
+        return sendToMainLeads;
+    }
+
+    public void setSendToMainLeads(Boolean sendToMainLeads) {
+        this.sendToMainLeads = sendToMainLeads;
+    }
+
     private String remarks;
 
 }

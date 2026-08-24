@@ -17,8 +17,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 @Component
 @RequiredArgsConstructor
@@ -154,14 +156,21 @@ public class AuthUtil {
             for (CreateTeam ct : memberAssignments) {
                 if (ct.getTeamIdFk() != null) {
                     teamRepository.findById(ct.getTeamIdFk()).ifPresent(t -> {
-                        if (!ledTeams.contains(t)) {
-                            ledTeams.add(t);
-                        }
+                        if (t != null) ledTeams.add(t);
                     });
                 }
             }
         }
-        return ledTeams;
+
+        List<Team> uniqueTeams = new ArrayList<>();
+        Set<Long> seenTeamIds = new HashSet<>();
+        for (Team t : ledTeams) {
+            if (t != null && t.getTeamId() != null && !seenTeamIds.contains(t.getTeamId())) {
+                seenTeamIds.add(t.getTeamId());
+                uniqueTeams.add(t);
+            }
+        }
+        return uniqueTeams;
     }
 
     public List<Long> getTeamLeadTeamIds(User user) {

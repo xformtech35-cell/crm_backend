@@ -11,4 +11,7 @@ public interface TaskTimeLogRepository extends JpaRepository<TaskTimeLog, Long> 
     List<TaskTimeLog> findByUserIdFk(Long userIdFk);
     List<TaskTimeLog> findByTaskId(Long taskId);
     List<TaskTimeLog> findByUserId(Long userId);
+    List<TaskTimeLog> findByUserIdAndEndTimeIsNull(Long userId);
+    List<TaskTimeLog> findByEndTimeIsNull();
 }
+

@@ -1,13 +1,17 @@
 package com.crm.service;
 
 import com.crm.dto.request.TeamMemberRequest;
+import com.crm.entity.CreateTeam;
+import com.crm.entity.Team;
 import com.crm.entity.TeamMember;
 import com.crm.entity.User;
 import com.crm.exception.BadRequestException;
 import com.crm.exception.ResourceNotFoundException;
+import com.crm.repository.CreateTeamRepository;
 import com.crm.repository.PermissionRepository;
 import com.crm.repository.RoleRepository;
 import com.crm.repository.TeamMemberRepository;
+import com.crm.repository.TeamRepository;
 import com.crm.repository.UserPermissionRepository;
 import com.crm.repository.UserRepository;
 import com.crm.util.AuthUtil;
@@ -33,6 +37,8 @@ public class TeamMemberService {
     private final UserPermissionRepository userPermissionRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuthUtil authUtil;
+    private final TeamRepository teamRepository;
+    private final CreateTeamRepository createTeamRepository;
 
     public List<TeamMember> getAllTeamMembers(Long userId, String role) {
         List<TeamMember> members;
@@ -88,12 +94,17 @@ public class TeamMemberService {
                             (m.getTeamMemberEmail() != null && m.getTeamMemberEmail().equalsIgnoreCase(adminUser.getUserEmail()))
                         );
                         if (!adminInList && adminUser.getUserEmail() != null) {
+                            Long adminRoleId = roleRepository.findByUserIdFk(adminUser.getUserid())
+                                    .stream().filter(r -> "ADMIN".equalsIgnoreCase(r.getRoleName()))
+                                    .map(com.crm.entity.Role::getRoleId).findFirst().orElse(null);
+
                             TeamMember adminTm = TeamMember.builder()
                                     .teamMemberId(-adminUser.getUserid())
                                     .teamMemberName(adminUser.getUsername() != null && !adminUser.getUsername().isBlank() ? adminUser.getUsername() : "Company Admin")
                                     .teamMemberEmail(adminUser.getUserEmail())
                                     .teamMemberMobile("")
                                     .userIdFk(adminUser.getUserid())
+                                    .teamMemberRole(adminRoleId)
                                     .build();
                             members.add(0, adminTm);
                         }
@@ -288,6 +299,22 @@ public class TeamMemberService {
                 throw new AccessDeniedException("Admins cannot delete Admin or Super Admin members");
             }
         }
+
+        // 1. Unset teamLeadId on any teams led by this member
+        List<Team> ledTeams = teamRepository.findByTeamLeadId(member.getTeamMemberId());
+        for (Team team : ledTeams) {
+            team.setTeamLeadId(null);
+            teamRepository.save(team);
+        }
+
+        // 2. Remove CreateTeam assignments for this member
+        List<CreateTeam> assignments = createTeamRepository.findByTeamMemberIdFk(member.getTeamMemberId());
+        if (!assignments.isEmpty()) {
+            createTeamRepository.deleteAll(assignments);
+        }
+
+        // 3. Clear reportingToFk for members reporting to this lead
+        teamMemberRepository.clearReportingToByLeadId(member.getTeamMemberId());
 
         if (targetUser != null) {
             userRepository.delete(targetUser);

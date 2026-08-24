@@ -11,6 +11,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.TemporalAdjusters;
 import java.util.List;
 
 @Service
@@ -24,20 +27,50 @@ public class ProjectService {
     private final LeadService leadService;
 
     public List<Project> getAllProjects(Long userId, String role) {
-        if (authUtil.isSuperAdmin(role)) return projectRepository.findAll();
-        com.crm.entity.User user = userRepository.findById(userId).orElse(null);
-        String scopeMode = authUtil.resolveDataScopeMode(user, "PROJECTS");
+        List<Project> projects;
+        if (authUtil.isSuperAdmin(role)) {
+            projects = projectRepository.findAll();
+        } else {
+            com.crm.entity.User user = userRepository.findById(userId).orElse(null);
+            String scopeMode = authUtil.resolveDataScopeMode(user, "PROJECTS");
 
-        if ("ALL_DATA".equals(scopeMode)) {
-            List<Long> companyUserIds = leadService.getCompanyUserIds(userId, role);
-            return projectRepository.findByUserIdFkIn(companyUserIds);
+            if ("ALL_DATA".equals(scopeMode)) {
+                List<Long> companyUserIds = leadService.getCompanyUserIds(userId, role);
+                projects = projectRepository.findByUserIdFkIn(companyUserIds);
+            } else if ("TEAM_DATA".equals(scopeMode)) {
+                List<Long> teamUserIds = authUtil.getTeamLeadMemberUserIds(user);
+                if (teamUserIds.isEmpty()) teamUserIds = List.of(-1L);
+                projects = projectRepository.findByUserIdFkIn(teamUserIds);
+            } else {
+                projects = projectRepository.findByUserIdFk(userId);
+            }
         }
-        if ("TEAM_DATA".equals(scopeMode)) {
-            List<Long> teamUserIds = authUtil.getTeamLeadMemberUserIds(user);
-            if (teamUserIds.isEmpty()) teamUserIds = List.of(-1L);
-            return projectRepository.findByUserIdFkIn(teamUserIds);
+
+        // Fix 7: Auto-create monthly default project if zero projects exist
+        if (projects.isEmpty() && userId != null) {
+            Project defaultProj = createMonthlyDefaultProject(userId);
+            projects = List.of(defaultProj);
         }
-        return projectRepository.findByUserIdFk(userId);
+
+        return projects;
+    }
+
+    private Project createMonthlyDefaultProject(Long adminUserId) {
+        LocalDate now = LocalDate.now();
+        String monthYearStr = now.format(DateTimeFormatter.ofPattern("MMM yyyy"));
+        String defaultName = "General Sales — " + monthYearStr;
+
+        Project defaultProject = Project.builder()
+                .projectName(defaultName)
+                .projectCode("PROJ-" + now.getYear() + "-" + String.format("%02d", now.getMonthValue()))
+                .projectStatus("In Progress")
+                .projectStartDate(now.withDayOfMonth(1))
+                .forecastCompletedDate(now.with(TemporalAdjusters.lastDayOfMonth()))
+                .projectDescription("Default auto-created sales project for " + monthYearStr)
+                .userIdFk(adminUserId)
+                .build();
+
+        return projectRepository.save(defaultProject);
     }
 
     public Project getById(Long id) {
@@ -76,3 +109,4 @@ public class ProjectService {
         return project;
     }
 }
+

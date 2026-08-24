@@ -53,9 +53,19 @@ public class OrganizationService {
         if ("TEAM_DATA".equals(scopeMode)) {
             List<Long> teamUserIds = authUtil.getTeamLeadMemberUserIds(user);
             if (teamUserIds.isEmpty()) teamUserIds = List.of(-1L);
-            return organizationRepository.findByUserIdFkIn(teamUserIds);
+            List<Organization> orgs = organizationRepository.findByUserIdFkIn(teamUserIds);
+            if (orgs.isEmpty()) {
+                List<Long> companyUserIds = leadService.getCompanyUserIds(userId, role);
+                return organizationRepository.findByUserIdFkIn(companyUserIds);
+            }
+            return orgs;
         }
-        return organizationRepository.findByUserIdFk(userId);
+        List<Organization> userOrgs = organizationRepository.findByUserIdFk(userId);
+        if (userOrgs.isEmpty()) {
+            List<Long> companyUserIds = leadService.getCompanyUserIds(userId, role);
+            return organizationRepository.findByUserIdFkIn(companyUserIds);
+        }
+        return userOrgs;
     }
 
     public Organization getById(Long id) {
@@ -64,6 +74,14 @@ public class OrganizationService {
     }
 
     public Organization create(OrganizationRequest req, Long userId) {
+        String name = req.getOrganizationName() != null ? req.getOrganizationName().trim() : "";
+        if (!name.isEmpty()) {
+            boolean duplicate = organizationRepository.findByUserIdFk(userId).stream()
+                    .anyMatch(o -> o.getOrganizationName() != null && o.getOrganizationName().trim().equalsIgnoreCase(name));
+            if (duplicate) {
+                throw new IllegalArgumentException("Organization '" + name + "' already exists!");
+            }
+        }
         Organization org = mapToEntity(req, new Organization());
         org.setUserIdFk(userId);
         return organizationRepository.save(org);
@@ -71,6 +89,14 @@ public class OrganizationService {
 
     public Organization update(Long id, OrganizationRequest req) {
         Organization org = getById(id);
+        String name = req.getOrganizationName() != null ? req.getOrganizationName().trim() : "";
+        if (!name.isEmpty()) {
+            boolean duplicate = organizationRepository.findByUserIdFk(org.getUserIdFk()).stream()
+                    .anyMatch(o -> o.getOrganizationName() != null && o.getOrganizationName().trim().equalsIgnoreCase(name) && !Objects.equals(o.getOrganizationId(), id));
+            if (duplicate) {
+                throw new IllegalArgumentException("Organization '" + name + "' already exists!");
+            }
+        }
         return organizationRepository.save(mapToEntity(req, org));
     }
 

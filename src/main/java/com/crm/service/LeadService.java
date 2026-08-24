@@ -236,12 +236,15 @@ public class LeadService {
             }
         }
 
+        Long companyAdminId = authUtil.getCompanyAdminId(user);
+        boolean isCompanyAdminUser = user != null && user.getUserid() != null && user.getUserid().equals(companyAdminId);
+
         if (authUtil.isSuperAdmin(role)) {
             leads = leadRepository.findAll(Sort.by(Sort.Direction.DESC, "leadId"));
-        } else if ("ALL_DATA".equals(scopeMode)) {
+        } else if ("ALL_DATA".equals(scopeMode) && (isCompanyAdminUser || authUtil.isAdmin(role))) {
             List<Long> userIds = getCompanyUserIds(userId, role);
             leads = leadRepository.findByUserIdFkInOrLeadAssignedMemberIn(userIds);
-        } else if ("TEAM_DATA".equals(scopeMode)) {
+        } else if ("TEAM_DATA".equals(scopeMode) || ("ALL_DATA".equals(scopeMode) && !isCompanyAdminUser)) {
             List<Long> teamUserIds = authUtil.getTeamLeadMemberUserIds(user);
             List<Long> teamIds = authUtil.getTeamLeadTeamIds(user);
             List<String> memberEmails = authUtil.getTeamLeadMemberEmails(user);

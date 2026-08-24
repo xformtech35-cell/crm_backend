@@ -27,9 +27,8 @@ public class OpportunityController {
     @GetMapping
     public ResponseEntity<ApiResponse<List<Opportunity>>> getAll(Authentication auth) {
         User user = authUtil.getCurrentUser(auth);
-        Long companyAdminId = authUtil.getCompanyAdminId(user);
         return ResponseEntity.ok(ApiResponse.success("Opportunities fetched",
-                opportunityService.getAllOpportunities(companyAdminId, user.getRole())));
+                opportunityService.getAllOpportunities(user.getUserid(), user.getRole())));
     }
 
     @GetMapping("/{id}")

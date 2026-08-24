@@ -51,6 +51,7 @@ public class LeadController {
 
     private final LeadRepository leadRepository;
     private final NegotiationRepository negotiationRepository;
+    private final com.crm.repository.UserRepository userRepository;
     private final LeadReminderEmailService leadReminderEmailService;
 
     // ========== TEST ENDPOINTS ==========
@@ -62,13 +63,180 @@ public class LeadController {
         return ResponseEntity.ok(response);
     }
 
-    @GetMapping("/test")
-    public ResponseEntity<Map<String, Object>> test() {
-        Map<String, Object> response = new HashMap<>();
-        response.put("success", true);
-        response.put("message", "Backend is working");
-        response.put("timestamp", LocalDateTime.now());
-        return ResponseEntity.ok(response);
+    @GetMapping("/seed-dummy-marketplace")
+    public ResponseEntity<Map<String, Object>> seedDummyMarketplaceLeads() {
+        Map<String, Object> res = new HashMap<>();
+        try {
+            long imCount = leadRepository.findAll().stream().filter(l -> l.getLeadSource() != null && l.getLeadSource().toLowerCase().contains("indiamart")).count();
+            if (imCount == 0) {
+                Lead l1 = new Lead();
+                l1.setLeadOrganisationName("Apex Aqua Technologies Pvt Ltd");
+                l1.setCompanyContactPersonName("Rajesh Sharma");
+                l1.setLeadMobileNo("9822011223");
+                l1.setLeadEmail("info@apexaqua.com");
+                l1.setLeadCity("Pune");
+                l1.setLeadState("Maharashtra");
+                l1.setLeadCountry("India");
+                l1.setLeadSource("IndiaMART");
+                l1.setEnquiryDescription("100 KLD Industrial RO Plant & WTP System for manufacturing plant");
+                l1.setLeadStatus("New Lead");
+                l1.setLeadOutcomeStatus("New Lead");
+                l1.setInquiryDate(java.time.LocalDate.now().minusDays(1));
+                l1.setLeadCreatedDate(LocalDateTime.now().minusDays(1));
+                l1.setSendToMainLeads(false);
+                leadRepository.save(l1);
+
+                Lead l2 = new Lead();
+                l2.setLeadOrganisationName("Sterling Chemicals & Organics");
+                l2.setCompanyContactPersonName("Amit Patel");
+                l2.setLeadMobileNo("9765432109");
+                l2.setLeadEmail("purchase@sterlingchem.com");
+                l2.setLeadCity("Ahmedabad");
+                l2.setLeadState("Gujarat");
+                l2.setLeadCountry("India");
+                l2.setLeadSource("IndiaMART");
+                l2.setEnquiryDescription("50 KLD Effluent Treatment Plant (ETP) with Zero Liquid Discharge (ZLD)");
+                l2.setLeadStatus("New Lead");
+                l2.setLeadOutcomeStatus("New Lead");
+                l2.setInquiryDate(java.time.LocalDate.now().minusDays(2));
+                l2.setLeadCreatedDate(LocalDateTime.now().minusDays(2));
+                l2.setSendToMainLeads(false);
+                leadRepository.save(l2);
+
+                Lead l3 = new Lead();
+                l3.setLeadOrganisationName("Bhartiya Bio-Enviro Systems");
+                l3.setCompanyContactPersonName("Sanjay Kulkarni");
+                l3.setLeadMobileNo("9890123456");
+                l3.setLeadEmail("sales@bhartiyabio.com");
+                l3.setLeadCity("Surat");
+                l3.setLeadState("Gujarat");
+                l3.setLeadCountry("India");
+                l3.setLeadSource("IndiaMART");
+                l3.setEnquiryDescription("25 M3/HR Demineralization Plant (DM) for boiler feed water application");
+                l3.setLeadStatus("New Lead");
+                l3.setLeadOutcomeStatus("New Lead");
+                l3.setInquiryDate(java.time.LocalDate.now());
+                l3.setLeadCreatedDate(LocalDateTime.now());
+                l3.setSendToMainLeads(false);
+                leadRepository.save(l3);
+
+                Lead t1 = new Lead();
+                t1.setLeadOrganisationName("Kirloskar Enviro Projects");
+                t1.setCompanyContactPersonName("Vikram Deshmukh");
+                t1.setLeadMobileNo("9844556677");
+                t1.setLeadEmail("enquiry@kirloskar-enviro.com");
+                t1.setLeadCity("Mumbai");
+                t1.setLeadState("Maharashtra");
+                t1.setLeadCountry("India");
+                t1.setLeadSource("TradeIndia");
+                t1.setEnquiryDescription("200 KLD Sewage Treatment Plant (STP) for commercial complex");
+                t1.setLeadStatus("New Lead");
+                t1.setLeadOutcomeStatus("New Lead");
+                t1.setInquiryDate(java.time.LocalDate.now().minusDays(1));
+                t1.setLeadCreatedDate(LocalDateTime.now().minusDays(1));
+                t1.setSendToMainLeads(false);
+                leadRepository.save(t1);
+
+                Lead t2 = new Lead();
+                t2.setLeadOrganisationName("SunTech Water Solutions");
+                t2.setCompanyContactPersonName("Pravin Mehta");
+                t2.setLeadMobileNo("9922334455");
+                t2.setLeadEmail("projects@suntechwater.in");
+                t2.setLeadCity("Vadodara");
+                t2.setLeadState("Gujarat");
+                t2.setLeadCountry("India");
+                t2.setLeadSource("TradeIndia");
+                t2.setEnquiryDescription("UF & RO Skid System 10 M3/HR capacity");
+                t2.setLeadStatus("New Lead");
+                t2.setLeadOutcomeStatus("New Lead");
+                t2.setInquiryDate(java.time.LocalDate.now().minusDays(3));
+                t2.setLeadCreatedDate(LocalDateTime.now().minusDays(3));
+                t2.setSendToMainLeads(false);
+                leadRepository.save(t2);
+
+                Lead t3 = new Lead();
+                t3.setLeadOrganisationName("Maharastra Industrial Processors");
+                t3.setCompanyContactPersonName("Dinesh More");
+                t3.setLeadMobileNo("9876543210");
+                t3.setLeadEmail("contact@maharashtraprocess.com");
+                t3.setLeadCity("Nashik");
+                t3.setLeadState("Maharashtra");
+                t3.setLeadCountry("India");
+                t3.setLeadSource("TradeIndia");
+                t3.setEnquiryDescription("Ultra Pure Water System for Pharmaceutical Formulation Unit");
+                t3.setLeadStatus("New Lead");
+                t3.setLeadOutcomeStatus("New Lead");
+                t3.setInquiryDate(java.time.LocalDate.now());
+                t3.setLeadCreatedDate(LocalDateTime.now());
+                t3.setSendToMainLeads(false);
+                leadRepository.save(t3);
+
+                res.put("message", "Seeded 3 IndiaMART leads and 3 TradeIndia leads successfully");
+            } else {
+                res.put("message", "Marketplace leads already exist");
+            }
+
+            // Assign to admin@uwsenviro.com
+            Long targetUserId = userRepository.findByUserEmail("admin@uwsenviro.com")
+                    .map(User::getUserid)
+                    .orElse(1L);
+
+            List<Lead> leads = leadRepository.findAll().stream()
+                    .filter(l -> l.getLeadSource() != null && 
+                            (l.getLeadSource().toLowerCase().contains("indiamart") || 
+                             l.getLeadSource().toLowerCase().contains("tradeindia")))
+                    .collect(java.util.stream.Collectors.toList());
+
+            for (Lead l : leads) {
+                l.setUserIdFk(targetUserId);
+                l.setLeadAssignedMember(targetUserId);
+                l.setCreatedBy("admin@uwsenviro.com");
+                l.setUpdatedBy("admin@uwsenviro.com");
+                leadRepository.save(l);
+            }
+
+            res.put("success", true);
+            res.put("assignedToUser", "admin@uwsenviro.com");
+            res.put("assignedUserId", targetUserId);
+            return ResponseEntity.ok(res);
+        } catch (Exception e) {
+            res.put("success", false);
+            res.put("error", e.getMessage());
+            return ResponseEntity.status(500).body(res);
+        }
+    }
+
+    @GetMapping("/bulk/assign-dummy-marketplace")
+    public ResponseEntity<Map<String, Object>> assignDummyMarketplaceLeads() {
+        Map<String, Object> res = new HashMap<>();
+        try {
+            Long targetUserId = userRepository.findByUserEmail("admin@uwsenviro.com")
+                    .map(User::getUserid)
+                    .orElse(1L);
+
+            List<Lead> leads = leadRepository.findAll().stream()
+                    .filter(l -> l.getLeadSource() != null && 
+                            (l.getLeadSource().toLowerCase().contains("indiamart") || 
+                             l.getLeadSource().toLowerCase().contains("tradeindia")))
+                    .collect(java.util.stream.Collectors.toList());
+
+            for (Lead l : leads) {
+                l.setUserIdFk(targetUserId);
+                l.setLeadAssignedMember(targetUserId);
+                l.setCreatedBy("admin@uwsenviro.com");
+                l.setUpdatedBy("admin@uwsenviro.com");
+                leadRepository.save(l);
+            }
+
+            res.put("success", true);
+            res.put("assignedCount", leads.size());
+            res.put("assignedToUserId", targetUserId);
+            return ResponseEntity.ok(res);
+        } catch (Exception e) {
+            res.put("success", false);
+            res.put("error", e.getMessage());
+            return ResponseEntity.status(500).body(res);
+        }
     }
 
     // ========== LEAD ENDPOINTS (existing) ==========

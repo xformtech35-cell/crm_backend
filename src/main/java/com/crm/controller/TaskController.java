@@ -1,5 +1,6 @@
 package com.crm.controller;
 
+import com.crm.dto.request.BulkTaskUpdateRequest;
 import com.crm.dto.request.TaskRequest;
 import com.crm.dto.response.ApiResponse;
 import com.crm.entity.Task;
@@ -8,6 +9,7 @@ import com.crm.service.TaskService;
 import com.crm.util.AuthUtil;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -31,14 +33,22 @@ public class TaskController {
                 taskService.getAllTasks(user.getUserid(), user.getRole())));
     }
 
-    @GetMapping("/{id}")
-    public ResponseEntity<ApiResponse<Task>> getById(@PathVariable Long id) {
-        return ResponseEntity.ok(ApiResponse.success("Task fetched", taskService.getById(id)));
-    }
-
     @GetMapping("/by-team/{teamId}")
     public ResponseEntity<ApiResponse<List<Task>>> getByTeam(@PathVariable Long teamId) {
         return ResponseEntity.ok(ApiResponse.success("Tasks fetched by team", taskService.getByTeam(teamId)));
+    }
+
+    @PutMapping(value = "/bulk-update", consumes = {MediaType.APPLICATION_JSON_VALUE})
+    public ResponseEntity<ApiResponse<List<Task>>> bulkUpdate(
+            @RequestBody BulkTaskUpdateRequest request,
+            Authentication auth) {
+        User user = authUtil.getCurrentUser(auth);
+        return ResponseEntity.ok(ApiResponse.success("Tasks bulk updated successfully", taskService.bulkUpdate(request, user)));
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<ApiResponse<Task>> getById(@PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success("Task fetched", taskService.getById(id)));
     }
 
     @PostMapping(consumes = {"multipart/form-data"})
@@ -64,3 +74,5 @@ public class TaskController {
         return ResponseEntity.ok(ApiResponse.success("Task deleted", null));
     }
 }
+
+
