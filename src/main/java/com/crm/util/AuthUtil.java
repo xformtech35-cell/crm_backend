@@ -280,6 +280,18 @@ public class AuthUtil {
         return emails;
     }
 
+    public String normalizeScopeMode(String rawScope) {
+        if (rawScope == null) return "OWN_DATA_ONLY";
+        String s = rawScope.toUpperCase().trim();
+        if (s.equals("GLOBAL") || s.equals("ALL_DATA") || s.equals("ADMIN_DATA")) {
+            return "ALL_DATA";
+        }
+        if (s.equals("ALL_TEAM") || s.equals("TEAM_DATA") || s.equals("DEPARTMENT_DATA")) {
+            return "TEAM_DATA";
+        }
+        return "OWN_DATA_ONLY";
+    }
+
     public String resolveDataScopeMode(User user, String moduleName) {
         if (user == null) return "OWN_DATA_ONLY";
         // Super Admin always has full access — unconditional
@@ -292,12 +304,12 @@ public class AuthUtil {
         if (companyAdminId != null) {
             Optional<DataScopeConfig> userConfig = dataScopeConfigRepository.findByCompanyAdminIdFkAndUserIdFkAndModuleName(companyAdminId, user.getUserid(), normalizedModule);
             if (userConfig.isPresent()) {
-                return userConfig.get().getScopeMode();
+                return normalizeScopeMode(userConfig.get().getScopeMode());
             }
         } else {
             Optional<DataScopeConfig> userConfig = dataScopeConfigRepository.findByUserIdFkAndModuleName(user.getUserid(), normalizedModule);
             if (userConfig.isPresent()) {
-                return userConfig.get().getScopeMode();
+                return normalizeScopeMode(userConfig.get().getScopeMode());
             }
         }
 
@@ -310,7 +322,7 @@ public class AuthUtil {
                         ? dataScopeConfigRepository.findByCompanyAdminIdFkAndRoleIdFkAndModuleName(companyAdminId, roleId, normalizedModule)
                         : dataScopeConfigRepository.findByRoleIdFkAndModuleName(roleId, normalizedModule);
                 if (roleConfig.isPresent()) {
-                    return roleConfig.get().getScopeMode();
+                    return normalizeScopeMode(roleConfig.get().getScopeMode());
                 }
             } catch (NumberFormatException e) {
                 // Find role by name within this company
@@ -324,7 +336,7 @@ public class AuthUtil {
                             ? dataScopeConfigRepository.findByCompanyAdminIdFkAndRoleIdFkAndModuleName(companyAdminId, rId, normalizedModule)
                             : dataScopeConfigRepository.findByRoleIdFkAndModuleName(rId, normalizedModule);
                     if (roleConfig.isPresent()) {
-                        return roleConfig.get().getScopeMode();
+                        return normalizeScopeMode(roleConfig.get().getScopeMode());
                     }
                 }
             }
@@ -338,7 +350,7 @@ public class AuthUtil {
                     ? dataScopeConfigRepository.findByCompanyAdminIdFkAndRoleIdFkAndModuleName(companyAdminId, tmRoleId, normalizedModule)
                     : dataScopeConfigRepository.findByRoleIdFkAndModuleName(tmRoleId, normalizedModule);
             if (roleConfig.isPresent()) {
-                return roleConfig.get().getScopeMode();
+                return normalizeScopeMode(roleConfig.get().getScopeMode());
             }
         }
 
