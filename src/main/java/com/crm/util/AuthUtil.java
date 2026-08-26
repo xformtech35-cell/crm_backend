@@ -58,22 +58,25 @@ public class AuthUtil {
 
     public Long getCompanyAdminId(User user) {
         if (user == null) return null;
-        String companyIdStr = request.getHeader("X-Company-Id");
-        if (companyIdStr != null && !companyIdStr.trim().isEmpty()) {
-            try {
-                return Long.parseLong(companyIdStr.trim());
-            } catch (Exception ignored) {}
+        if (request != null) {
+            String companyIdStr = request.getHeader("X-Company-Id");
+            if (companyIdStr != null && !companyIdStr.trim().isEmpty()) {
+                try {
+                    return Long.parseLong(companyIdStr.trim());
+                } catch (Exception ignored) {}
+            }
         }
         if (isSuperAdmin(user.getRole())) {
             return null;
         }
-        if (isAdmin(user.getRole())) {
-            return user.getUserid();
+        if (user.getGroupId() != null) {
+            return user.getGroupId();
         }
         return teamMemberRepository.findByTeamMemberEmail(user.getUserEmail())
                 .map(TeamMember::getUserIdFk)
                 .orElse(user.getUserid());
     }
+
 
     public Long getSelectedTeamMemberId() {
         String header = request.getHeader("X-Team-Member-Id");

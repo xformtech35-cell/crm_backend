@@ -7,11 +7,20 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
+
+import com.crm.entity.LeadMember;
+
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -88,6 +97,7 @@ public class LeadService {
     private final DocumentRepository documentRepository;
     private final ContactRepository contactRepository;
     private final OrganizationRepository organizationRepository;
+    private final com.crm.repository.LeadMemberRepository leadMemberRepository;
 
 
     // public LeadService() {
@@ -190,6 +200,98 @@ public class LeadService {
         }
     }
 
+    public void populateAssignedMembers(List<Lead> leads) {
+        if (leads == null || leads.isEmpty()) return;
+        List<Long> leadIds = leads.stream().map(Lead::getLeadId).filter(Objects::nonNull).toList();
+        List<LeadMember> allMembers = leadMemberRepository.findByLeadIdFkIn(leadIds);
+        Map<Long, List<LeadMember>> memberMap = allMembers.stream()
+                .collect(Collectors.groupingBy(LeadMember::getLeadIdFk));
+
+        Map<Long, String> tmNameCache = new HashMap<>();
+        for (Lead lead : leads) {
+            List<LeadMember> lms = memberMap.getOrDefault(lead.getLeadId(), Collections.emptyList());
+            List<Long> ids = new ArrayList<>();
+            List<String> names = new ArrayList<>();
+
+            if (lead.getLeadAssignedMember() != null) {
+                ids.add(lead.getLeadAssignedMember());
+                String name = tmNameCache.computeIfAbsent(lead.getLeadAssignedMember(), id ->
+                    teamMemberRepository.findById(id).map(TeamMember::getTeamMemberName).orElse(null)
+                );
+                if (name != null) names.add(name);
+            }
+
+            for (LeadMember lm : lms) {
+                if (!ids.contains(lm.getTeamMemberIdFk())) {
+                    ids.add(lm.getTeamMemberIdFk());
+                    String name = tmNameCache.computeIfAbsent(lm.getTeamMemberIdFk(), id ->
+                        teamMemberRepository.findById(id).map(TeamMember::getTeamMemberName).orElse(null)
+                    );
+                    if (name != null) names.add(name);
+                }
+            }
+            lead.setAssignedMemberIds(ids);
+            lead.setAssignedMemberNames(names);
+        }
+    }
+
+    @Transactional
+    public void syncLeadMembers(Lead lead, List<Long> memberIds, Long primaryMemberId) {
+        if (lead == null || lead.getLeadId() == null) return;
+
+        Set<Long> targetMemberIds = new LinkedHashSet<>();
+        if (primaryMemberId != null) {
+            targetMemberIds.add(primaryMemberId);
+        }
+        if (memberIds != null) {
+            targetMemberIds.addAll(memberIds);
+        }
+
+        // Team Membership Validation: Verify that all selected members belong to leadAssignedTeam
+        if (lead.getLeadAssignedTeam() != null && !targetMemberIds.isEmpty()) {
+            Long teamId = lead.getLeadAssignedTeam();
+            for (Long tmId : targetMemberIds) {
+                Optional<TeamMember> tmOpt = teamMemberRepository.findById(tmId);
+                if (tmOpt.isPresent()) {
+                    TeamMember tm = tmOpt.get();
+                    boolean matchesTeam = (tm.getTeamIdFk() != null && tm.getTeamIdFk().equals(teamId))
+                            || createTeamRepository.findByTeamMemberIdFk(tmId).stream().anyMatch(ct -> teamId.equals(ct.getTeamIdFk()));
+                    if (!matchesTeam) {
+                        throw new BadRequestException("Validation Error: Team Member '" + tm.getTeamMemberName() + "' does not belong to the selected Team (ID: " + teamId + ").");
+                    }
+                }
+            }
+        }
+
+        List<LeadMember> existing = leadMemberRepository.findByLeadIdFk(lead.getLeadId());
+        for (LeadMember lm : existing) {
+            if (!targetMemberIds.contains(lm.getTeamMemberIdFk())) {
+                leadMemberRepository.delete(lm);
+            }
+        }
+
+        for (Long tmId : targetMemberIds) {
+            Optional<LeadMember> opt = leadMemberRepository.findByLeadIdFkAndTeamMemberIdFk(lead.getLeadId(), tmId);
+            boolean isPrimary = tmId.equals(primaryMemberId);
+            if (opt.isPresent()) {
+                LeadMember lm = opt.get();
+                lm.setIsPrimary(isPrimary ? 1 : 0);
+                leadMemberRepository.save(lm);
+            } else {
+                LeadMember lm = LeadMember.builder()
+                        .leadIdFk(lead.getLeadId())
+                        .teamMemberIdFk(tmId)
+                        .isPrimary(isPrimary ? 1 : 0)
+                        .createdAt(LocalDateTime.now())
+                        .updatedAt(LocalDateTime.now())
+                        .build();
+                leadMemberRepository.save(lm);
+            }
+        }
+    }
+
+
+
     public List<Lead> getAllLeads(Long userId, String role) {
         List<Lead> leads;
         User user = userRepository.findById(userId).orElse(null);
@@ -241,36 +343,98 @@ public class LeadService {
 
         if (authUtil.isSuperAdmin(role)) {
             leads = leadRepository.findAll(Sort.by(Sort.Direction.DESC, "leadId"));
-        } else if ("ALL_DATA".equals(scopeMode) && (isCompanyAdminUser || authUtil.isAdmin(role))) {
+        } else if ("ALL_DATA".equals(scopeMode)) {
             List<Long> userIds = getCompanyUserIds(userId, role);
-            leads = leadRepository.findByUserIdFkInOrLeadAssignedMemberIn(userIds);
-        } else if ("TEAM_DATA".equals(scopeMode) || ("ALL_DATA".equals(scopeMode) && !isCompanyAdminUser)) {
-            List<Long> teamUserIds = authUtil.getTeamLeadMemberUserIds(user);
+            leads = leadRepository.findByCompanyAdminCriteria(companyAdminId, userIds);
+        } else if ("TEAM_DATA".equals(scopeMode)) {
             List<Long> teamIds = authUtil.getTeamLeadTeamIds(user);
-            List<String> memberEmails = authUtil.getTeamLeadMemberEmails(user);
-            if (teamUserIds.isEmpty()) teamUserIds = List.of(-1L);
             if (teamIds.isEmpty()) teamIds = List.of(-1L);
-            if (memberEmails.isEmpty()) memberEmails = List.of("__NONE__");
-            leads = leadRepository.findByTeamLeadCriteria(teamUserIds, teamIds, memberEmails);
+            leads = leadRepository.findByTeamDataCriteria(teamIds);
         } else {
             // OWN_DATA_ONLY
             Optional<TeamMember> tmOpt = teamMemberRepository.findByTeamMemberEmail(user != null ? user.getUserEmail() : "");
             Long teamMemberId = tmOpt.map(TeamMember::getTeamMemberId).orElse(null);
-            String teamMemberName = tmOpt.map(TeamMember::getTeamMemberName).orElse(null);
             String userEmail = user != null ? user.getUserEmail() : null;
 
-            leads = leadRepository.findByOwnDataCriteria(userId, teamMemberId, userEmail, teamMemberName);
+            leads = leadRepository.findByOwnDataCriteria(userId, teamMemberId, userEmail);
         }
+
         populateCreatorInfoIfMissing(leads);
+        populateAssignedMembers(leads);
         return leads;
     }
 
-
     public Lead getLeadById(Long id) {
-        return leadRepository.findById(id)
+        Lead lead = leadRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Lead", "id", id));
+        populateCreatorInfoIfMissing(List.of(lead));
+        populateAssignedMembers(List.of(lead));
+        return lead;
     }
 
+    public Lead getLeadById(Long id, User currentUser) {
+        Lead lead = leadRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Lead", "id", id));
+        if (currentUser == null) {
+            populateCreatorInfoIfMissing(List.of(lead));
+            populateAssignedMembers(List.of(lead));
+            return lead;
+        }
+        String scopeMode = authUtil.resolveDataScopeMode(currentUser, "LEADS");
+        if (authUtil.isSuperAdmin(currentUser.getRole()) || "ALL_DATA".equals(scopeMode)) {
+            Long companyAdminId = authUtil.getCompanyAdminId(currentUser);
+            if (companyAdminId != null && lead.getGroupId() != null && !companyAdminId.equals(lead.getGroupId()) && !companyAdminId.equals(lead.getUserIdFk())) {
+                throw new org.springframework.security.access.AccessDeniedException("Access denied: You cannot view leads outside your organization");
+            }
+            populateCreatorInfoIfMissing(List.of(lead));
+            populateAssignedMembers(List.of(lead));
+            return lead;
+        }
+        if ("TEAM_DATA".equals(scopeMode)) {
+            List<Long> teamIds = authUtil.getTeamLeadTeamIds(currentUser);
+            if (lead.getLeadAssignedTeam() == null || !teamIds.contains(lead.getLeadAssignedTeam())) {
+                throw new org.springframework.security.access.AccessDeniedException("Access denied: You cannot view leads outside your team");
+            }
+            populateCreatorInfoIfMissing(List.of(lead));
+            populateAssignedMembers(List.of(lead));
+            return lead;
+        }
+        // OWN_DATA_ONLY
+        Optional<TeamMember> tmOpt = teamMemberRepository.findByTeamMemberEmail(currentUser.getUserEmail());
+        Long tmId = tmOpt.map(TeamMember::getTeamMemberId).orElse(null);
+        boolean isDirectAssigned = tmId != null && tmId.equals(lead.getLeadAssignedMember());
+        boolean isCreator = currentUser.getUserid() != null && currentUser.getUserid().equals(lead.getUserIdFk());
+        boolean isJointAssigned = tmId != null && leadMemberRepository.findByLeadIdFkAndTeamMemberIdFk(id, tmId).isPresent();
+        if (!isDirectAssigned && !isCreator && !isJointAssigned) {
+            throw new org.springframework.security.access.AccessDeniedException("Access denied: You can only view your own assigned leads");
+        }
+        populateCreatorInfoIfMissing(List.of(lead));
+        populateAssignedMembers(List.of(lead));
+        return lead;
+    }
+
+
+
+    public void validateTeamMembers(Long teamId, List<Long> memberIds, Long primaryMemberId) {
+        if (teamId == null) return;
+        Set<Long> targetMemberIds = new LinkedHashSet<>();
+        if (primaryMemberId != null) targetMemberIds.add(primaryMemberId);
+        if (memberIds != null) targetMemberIds.addAll(memberIds);
+
+        for (Long tmId : targetMemberIds) {
+            Optional<TeamMember> tmOpt = teamMemberRepository.findById(tmId);
+            if (tmOpt.isPresent()) {
+                TeamMember tm = tmOpt.get();
+                boolean matchesTeam = (tm.getTeamIdFk() != null && tm.getTeamIdFk().equals(teamId))
+                        || createTeamRepository.findByTeamMemberIdFk(tmId).stream().anyMatch(ct -> teamId.equals(ct.getTeamIdFk()));
+                if (!matchesTeam) {
+                    throw new BadRequestException("Validation Error: Team Member '" + tm.getTeamMemberName() + "' does not belong to the selected Team (ID: " + teamId + ").");
+                }
+            }
+        }
+    }
+
+    @Transactional
     public Lead createLead(LeadRequest request, Long userId,
             MultipartFile doc, MultipartFile doc1,
             MultipartFile doc2, MultipartFile doc3) throws IOException {
@@ -298,8 +462,17 @@ public class LeadService {
         lead.setUploadDocument1(fileUploadUtil.upload(doc1));
         lead.setUploadDocument2(fileUploadUtil.upload(doc2));
         lead.setUploadDocument3(fileUploadUtil.upload(doc3));
+
+        // Validate team member constraints BEFORE persisting to database
+        validateTeamMembers(lead.getLeadAssignedTeam(), request.getAssignedMemberIds(), request.getLeadAssignedMember());
+
         Lead saved = leadRepository.save(lead);
+        syncLeadMembers(saved, request.getAssignedMemberIds(), request.getLeadAssignedMember());
+        populateCreatorInfoIfMissing(List.of(saved));
+        populateAssignedMembers(List.of(saved));
         syncRelatedEntities(saved);
+        syncNegotiationForLead(saved);
+        saveNegotiationRevision(saved);
         if ("Qualified".equals(saved.getEnquiryType())) {
             createSalesTaskIfNotExist(saved, saved.getUserIdFk() != null ? saved.getUserIdFk() : userId);
         }
@@ -309,6 +482,8 @@ public class LeadService {
         leadScoringService.scoreAndCache(saved.getLeadId());
         return saved;
     }
+
+
 
 
     // public Lead updateLead(Long id, LeadRequest request, Long userId,
@@ -351,19 +526,16 @@ public class LeadService {
     //     Lead saved = leadRepository.save(lead);
     //     return saved;
     // }
+    @Transactional
     public Lead updateLead(Long id, LeadRequest request, Long userId,
             MultipartFile doc, MultipartFile doc1,
             MultipartFile doc2, MultipartFile doc3) throws IOException {
 
         Lead lead = getLeadById(id);
-        
-        // Snapshot OLD state (e.g. R0) BEFORE modifying fields if it's in Negotiation
-        boolean wasNegotiation = "Negotiation".equalsIgnoreCase(lead.getLeadStatus())
-                || "Negotiation".equalsIgnoreCase(lead.getLeadOutcomeStatus());
-        if (wasNegotiation) {
-            syncNegotiationForLead(lead);
-            saveNegotiationRevision(lead);
-        }
+
+        // Snapshot OLD state (e.g. R0) BEFORE modifying fields
+        syncNegotiationForLead(lead);
+        saveNegotiationRevision(lead);
 
         // Update Lead fields
         mapToEntity(request, lead);
@@ -416,8 +588,14 @@ public class LeadService {
         }
         lead.setUpdatedDate(LocalDateTime.now());
 
+        // Validate team member constraints BEFORE persisting to database
+        validateTeamMembers(lead.getLeadAssignedTeam(), request.getAssignedMemberIds(), request.getLeadAssignedMember());
+
         // Save Lead
         Lead saved = leadRepository.save(lead);
+        syncLeadMembers(saved, request.getAssignedMemberIds(), request.getLeadAssignedMember());
+        populateCreatorInfoIfMissing(List.of(saved));
+        populateAssignedMembers(List.of(saved));
         syncRelatedEntities(saved);
 
         // Sync Negotiation & Revision History (Snapshot NEW state, e.g. R1)
@@ -427,54 +605,51 @@ public class LeadService {
         return saved;
     }
 
+
+
     public void syncNegotiationForLead(Lead lead) {
         if (lead == null || lead.getLeadId() == null) return;
 
-        boolean isNegotiation = "Negotiation".equalsIgnoreCase(lead.getLeadStatus())
-                || "Negotiation".equalsIgnoreCase(lead.getLeadOutcomeStatus());
+        String defaultRevision = (lead.getQuotationRevision() != null && !lead.getQuotationRevision().isBlank()) 
+                ? lead.getQuotationRevision() : "R0";
 
-        if (isNegotiation) {
-            String defaultRevision = (lead.getQuotationRevision() != null && !lead.getQuotationRevision().isBlank()) 
-                    ? lead.getQuotationRevision() : "R0";
-
-            if (lead.getQuotationRevision() == null || lead.getQuotationRevision().isBlank()) {
-                lead.setQuotationRevision("R0");
-                leadRepository.save(lead);
-            }
-
-            Negotiation negotiation = negotiationRepository
-                    .findFirstByLeadIdFk(lead.getLeadId())
-                    .orElse(null);
-
-            if (negotiation == null) {
-                negotiation = Negotiation.builder()
-                        .leadIdFk(lead.getLeadId())
-                        .negotiationName(lead.getLeadOrganisationName())
-                        .negotiationTitle(lead.getLeadTitle())
-                        .quotationNo(lead.getQuotationNumber())
-                        .quotationRevision(defaultRevision)
-                        .quotationAmount(lead.getQuotationAmount())
-                        .remarks(lead.getFollowUpRemark())
-                        .negotiationStatus("Negotiation")
-                        .userIdFk(lead.getUserIdFk())
-                        .build();
-            } else {
-                negotiation.setNegotiationName(lead.getLeadOrganisationName());
-                negotiation.setNegotiationTitle(lead.getLeadTitle());
-                negotiation.setQuotationNo(lead.getQuotationNumber());
-                negotiation.setQuotationRevision(defaultRevision);
-                negotiation.setQuotationAmount(lead.getQuotationAmount());
-                negotiation.setRemarks(lead.getFollowUpRemark());
-                if (lead.getLeadOutcomeStatus() != null && !lead.getLeadOutcomeStatus().isBlank()) {
-                    negotiation.setNegotiationStatus(lead.getLeadOutcomeStatus());
-                } else if (lead.getLeadStatus() != null && !lead.getLeadStatus().isBlank()) {
-                    negotiation.setNegotiationStatus(lead.getLeadStatus());
-                }
-            }
-            negotiation = negotiationRepository.save(negotiation);
-
-            ensureR0RevisionExists(negotiation, lead);
+        if (lead.getQuotationRevision() == null || lead.getQuotationRevision().isBlank()) {
+            lead.setQuotationRevision("R0");
+            leadRepository.save(lead);
         }
+
+        Negotiation negotiation = negotiationRepository
+                .findFirstByLeadIdFk(lead.getLeadId())
+                .orElse(null);
+
+        String currentStatus = (lead.getLeadOutcomeStatus() != null && !lead.getLeadOutcomeStatus().isBlank())
+                ? lead.getLeadOutcomeStatus()
+                : (lead.getLeadStatus() != null && !lead.getLeadStatus().isBlank() ? lead.getLeadStatus() : "Open");
+
+        if (negotiation == null) {
+            negotiation = Negotiation.builder()
+                    .leadIdFk(lead.getLeadId())
+                    .negotiationName(lead.getLeadOrganisationName())
+                    .negotiationTitle(lead.getLeadTitle())
+                    .quotationNo(lead.getQuotationNumber())
+                    .quotationRevision(defaultRevision)
+                    .quotationAmount(lead.getQuotationAmount())
+                    .remarks(lead.getFollowUpRemark())
+                    .negotiationStatus(currentStatus)
+                    .userIdFk(lead.getUserIdFk())
+                    .build();
+        } else {
+            negotiation.setNegotiationName(lead.getLeadOrganisationName());
+            negotiation.setNegotiationTitle(lead.getLeadTitle());
+            negotiation.setQuotationNo(lead.getQuotationNumber());
+            negotiation.setQuotationRevision(defaultRevision);
+            negotiation.setQuotationAmount(lead.getQuotationAmount());
+            negotiation.setRemarks(lead.getFollowUpRemark());
+            negotiation.setNegotiationStatus(currentStatus);
+        }
+        negotiation = negotiationRepository.save(negotiation);
+
+        ensureR0RevisionExists(negotiation, lead);
     }
 
     @Transactional
@@ -585,9 +760,23 @@ public class LeadService {
                     .findFirst().orElse(null);
         }
         
-        if (lead != null && r0Revision != null) {
+        if (r0Revision != null) {
             List<Document> existingDocs = documentRepository.findByNegotiationRevisionId(r0Revision.getId());
             if (existingDocs == null || existingDocs.isEmpty()) {
+                if (r0Revision.getQuotationNo() != null && !r0Revision.getQuotationNo().isBlank()) {
+                    List<Document> byQtn = documentRepository.findByQuotationNo(r0Revision.getQuotationNo());
+                    if (byQtn != null && !byQtn.isEmpty()) {
+                        for (Document d : byQtn) {
+                            if (d.getNegotiationRevision() == null) {
+                                d.setNegotiationRevision(r0Revision);
+                                documentRepository.save(d);
+                            }
+                        }
+                        existingDocs = documentRepository.findByNegotiationRevisionId(r0Revision.getId());
+                    }
+                }
+            }
+            if (lead != null && (existingDocs == null || existingDocs.isEmpty())) {
                 syncLeadDocumentsToRevision(lead, r0Revision);
             }
         }
@@ -626,6 +815,7 @@ public class LeadService {
         revision.setRemarks(lead.getFollowUpRemark());
         revision.setEnquiryDescription(lead.getEnquiryDescription());
         revision.setQuotationDate(lead.getQuotationDate());
+        revision.setQuotationSentDate(lead.getQuotationSentDate());
         revision.setNegotiationStatus(negotiation.getNegotiationStatus() != null ? negotiation.getNegotiationStatus() : "Negotiation");
         revision.setUserIdFk(negotiation.getUserIdFk());
         revision.setUpdatedDate(LocalDateTime.now());
@@ -815,6 +1005,18 @@ public class LeadService {
         return updateLeadEnquiryStatus(id, status, null);
     }
 
+    @Transactional
+    public Lead updateSendToMainLeads(Long id, Boolean sendToMainLeads, User user) {
+        Lead lead = leadRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Lead not found with id: " + id));
+        lead.setSendToMainLeads(sendToMainLeads != null ? sendToMainLeads : false);
+        if (user != null && user.getUserEmail() != null) {
+            lead.setUpdatedBy(user.getUserEmail());
+        }
+        lead.setUpdatedDate(LocalDateTime.now());
+        return leadRepository.saveAndFlush(lead);
+    }
+
     public Lead updateLeadOutcomeStatus(Long id, String leadOutcomeStatus, User user) {
         Lead lead = leadRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Lead not found with id: " + id));
@@ -921,11 +1123,14 @@ public class LeadService {
             String teamMemberName = tmOpt.map(TeamMember::getTeamMemberName).orElse(null);
             String userEmail = user != null ? user.getUserEmail() : null;
 
-            leads = leadRepository.findByOwnDataCriteriaAndStatus(userId, teamMemberId, userEmail, teamMemberName, status);
+            leads = leadRepository.findByOwnDataCriteriaAndStatus(userId, teamMemberId, userEmail, status);
         }
+
         populateCreatorInfoIfMissing(leads);
+        populateAssignedMembers(leads);
         return leads;
     }
+
 
 
 
@@ -1216,6 +1421,19 @@ public class LeadService {
         lead.setInquiryDate(req.getInquiryDate());
         lead.setLeadAssignedTeam(req.getLeadAssignedTeam());
         lead.setLeadAssignedMember(req.getLeadAssignedMember());
+        lead.setLeadRef(req.getLeadRef());
+
+        // Auto-resolve assigned member & team from leadRef if not explicitly provided
+        if (lead.getLeadAssignedMember() == null && lead.getLeadRef() != null && !lead.getLeadRef().isBlank()) {
+            Optional<TeamMember> tm = teamMemberRepository.findByTeamMemberName(lead.getLeadRef());
+            if (tm.isPresent()) {
+                lead.setLeadAssignedMember(tm.get().getTeamMemberId());
+                if (lead.getLeadAssignedTeam() == null && tm.get().getTeamIdFk() != null) {
+                    lead.setLeadAssignedTeam(tm.get().getTeamIdFk());
+                }
+            }
+        }
+
         if (req.getLeadRating() != null) {
             lead.setLeadRating(req.getLeadRating());
         }
@@ -1233,8 +1451,11 @@ public class LeadService {
         lead.setFollowUpRemark(req.getFollowUpRemark());
         lead.setOngoingPriority(req.getOngoingPriority());
         lead.setLeadGroup(req.getLeadGroup());
-        lead.setLeadRef(req.getLeadRef());
         lead.setEnquiryStatus(req.getEnquiryStatus());
+
+        if (req.getSendToMainLeads() != null) {
+            lead.setSendToMainLeads(req.getSendToMainLeads());
+        }
 
         if (req.getLeadOutcomeStatus() != null
                 && !req.getLeadOutcomeStatus().isBlank()) {

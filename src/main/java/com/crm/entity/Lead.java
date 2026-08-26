@@ -128,6 +128,9 @@ public class Lead {
     @Column(name = "lead_assigned_member")
     private Long leadAssignedMember;
 
+    @Column(name = "group_id")
+    private Long groupId;
+
     // ─── New fields for corrected flow ───
     @Column(name = "enquiry_description", columnDefinition = "TEXT")
     private String enquiryDescription;
@@ -180,7 +183,15 @@ public class Lead {
     private Integer leadRating;
 
     @Column(name = "quotation_sent_date")
-    private LocalDate QuotationSentDate;
+    private LocalDate quotationSentDate;
+
+    public LocalDate getQuotationSentDate() {
+        return quotationSentDate;
+    }
+
+    public void setQuotationSentDate(LocalDate quotationSentDate) {
+        this.quotationSentDate = quotationSentDate;
+    }
 
     @Column(name = "created_by")
     private String createdBy;
@@ -205,5 +216,11 @@ public class Lead {
 
     private String remarks;
 
+    @jakarta.persistence.Transient
+    private java.util.List<Long> assignedMemberIds;
+
+    @jakarta.persistence.Transient
+    private java.util.List<String> assignedMemberNames;
 }
+
 

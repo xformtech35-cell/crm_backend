@@ -266,10 +266,18 @@ public class NegotiationController {
             }
 
             // Lead fields
+            String quotationSentDate = null;
+            if (l.getQuotationSentDate() != null) {
+                quotationSentDate = l.getQuotationSentDate().toString();
+            }
+
             map.put("leadRef", leadRef);
             map.put("leadStatus", leadStatus);
             map.put("leadOutcomeStatus", leadOutcomeStatus);
             map.put("quotationDate", quotationDate);
+            map.put("quotationWorkingDate", quotationDate);
+            map.put("quotationSentDate", quotationSentDate);
+            map.put("sentQuotationDate", quotationSentDate);
             map.put("inquiryDate", inquiryDate);
             map.put("enquiryDescription", enquiryDescription);
 
@@ -338,6 +346,17 @@ public class NegotiationController {
                 map.put("remarks", rev.getRemarks());
                 map.put("enquiryDescription", rev.getEnquiryDescription());
                 map.put("quotationDate", rev.getQuotationDate());
+                map.put("quotationWorkingDate", rev.getQuotationDate());
+                
+                String quotationSentDate = null;
+                if (n.getLeadIdFk() != null) {
+                    Optional<Lead> leadOpt = leadRepository.findById(n.getLeadIdFk());
+                    if (leadOpt.isPresent() && leadOpt.get().getQuotationSentDate() != null) {
+                        quotationSentDate = leadOpt.get().getQuotationSentDate().toString();
+                    }
+                }
+                map.put("quotationSentDate", quotationSentDate);
+                map.put("sentQuotationDate", quotationSentDate);
                 map.put("updatedDate", rev.getUpdatedDate());
                 allRevisions.add(map);
             }
@@ -377,12 +396,13 @@ public ResponseEntity<ApiResponse<Lead>> getDetails(@PathVariable Long id) {
             }
 
             Negotiation negotiation = nOpt.get();
-            if (negotiation.getLeadIdFk() != null) {
-                Optional<Lead> leadOpt = leadRepository.findById(negotiation.getLeadIdFk());
-                if (leadOpt.isPresent()) {
-                    leadService.ensureR0RevisionExists(negotiation, leadOpt.get());
-                }
+            Optional<Lead> leadOpt = negotiation.getLeadIdFk() != null 
+                    ? leadRepository.findById(negotiation.getLeadIdFk()) 
+                    : Optional.empty();
+            if (leadOpt.isPresent()) {
+                leadService.ensureR0RevisionExists(negotiation, leadOpt.get());
             }
+
 
             List<NegotiationRevision> revisions = negotiationRevisionRepository
                     .findByNegotiationIdOrLeadIdFkOrderByUpdatedDateDesc(negotiation.getId(), leadId);
@@ -402,35 +422,72 @@ public ResponseEntity<ApiResponse<Lead>> getDetails(@PathVariable Long id) {
                 Map<String, Object> map = new HashMap<>();
                 map.put("id", rev.getId());
                 map.put("revisionNo", revCode);
-                map.put("quotationNo", rev.getQuotationNo());
+                String rawQtn = rev.getQuotationNo() != null ? rev.getQuotationNo() : "";
+                String baseQuot = rawQtn.replaceAll("/R\\d+$", "");
+                String computedQuotNo = "R0".equalsIgnoreCase(revCode) ? baseQuot : (baseQuot.isBlank() ? rawQtn : (baseQuot + "/" + revCode.toUpperCase()));
+                map.put("quotationNo", computedQuotNo);
                 map.put("quotationAmount", rev.getQuotationAmount());
                 map.put("negotiationStatus", rev.getNegotiationStatus());
                 map.put("remarks", rev.getRemarks());
                 map.put("enquiryDescription", rev.getEnquiryDescription());
                 map.put("quotationDate", rev.getQuotationDate());
+                map.put("quotationWorkingDate", rev.getQuotationDate());
+                
+                String quotationSentDate = null;
+                if (rev.getQuotationSentDate() != null) {
+                    quotationSentDate = rev.getQuotationSentDate().toString();
+                } else if ("R0".equalsIgnoreCase(revCode) && leadOpt.isPresent() && leadOpt.get().getQuotationSentDate() != null) {
+                    quotationSentDate = leadOpt.get().getQuotationSentDate().toString();
+                }
+                map.put("quotationSentDate", quotationSentDate);
+                map.put("sentQuotationDate", quotationSentDate);
                 map.put("updatedDate", rev.getUpdatedDate());
                 map.put("isCurrent", revCode.equalsIgnoreCase(activeRevCode));
 
                 try {
+                    boolean isR0 = "R0".equalsIgnoreCase(revCode);
+                    String targetQuot = isR0 ? baseQuot : (baseQuot + "/" + revCode.toUpperCase());
+
                     List<Document> documents = documentRepository.findByNegotiationRevisionId(rev.getId());
+                    if (documents != null) {
+                        documents = documents.stream()
+                                .filter(d -> {
+                                    if (d == null || (d.getIsDeleted() != null && d.getIsDeleted())) return false;
+                                    if (isR0) {
+                                        if (d.getQuotationNo() != null && d.getQuotationNo().toUpperCase().matches(".*/R[1-9]\\d*$")) return false;
+                                        if (d.getFileUrl() != null && d.getFileUrl().matches("(?i).*/R[1-9]\\d*/.*")) return false;
+                                    } else {
+                                        boolean matchesRev = (d.getQuotationNo() != null && d.getQuotationNo().toUpperCase().endsWith("/" + revCode.toUpperCase()))
+                                                || (d.getFileUrl() != null && d.getFileUrl().toUpperCase().contains("/" + revCode.toUpperCase() + "/"));
+                                        if (!matchesRev && d.getNegotiationRevision() != null) {
+                                            String rRev = d.getNegotiationRevision().getQuotationRevision();
+                                            if (rRev != null && !rRev.equalsIgnoreCase(revCode)) return false;
+                                        }
+                                    }
+                                    return true;
+                                })
+                                .collect(Collectors.toList());
+                    }
+
                     if (documents == null || documents.isEmpty()) {
-                        String quotationNo = rev.getQuotationNo();
-                        if (quotationNo != null && !quotationNo.isBlank()) {
-                            boolean isR0 = "R0".equalsIgnoreCase(revCode);
-                            boolean matchesRevSuffix = quotationNo.toUpperCase().endsWith("/" + revCode.toUpperCase());
-                            if (isR0 || matchesRevSuffix) {
-                                List<Document> byQtn = documentRepository.findByQuotationNo(quotationNo);
-                                if (byQtn != null) {
-                                    documents = byQtn.stream()
-                                            .filter(d -> d != null && d.getQuotationNo() != null && quotationNo.equalsIgnoreCase(d.getQuotationNo()))
-                                            .filter(d -> {
-                                                if (isR0 && d.getFileUrl() != null && d.getFileUrl().contains("/R")) {
-                                                    return false;
-                                                }
-                                                return true;
-                                            })
-                                            .collect(Collectors.toList());
-                                }
+                        if (!targetQuot.isBlank()) {
+                            List<Document> byQtn = documentRepository.findByQuotationNo(targetQuot);
+                            if (byQtn == null || byQtn.isEmpty()) {
+                                byQtn = documentRepository.findByQuotationNo(targetQuot.replace("/", "_"));
+                            }
+                            if (byQtn != null) {
+                                documents = byQtn.stream()
+                                        .filter(d -> d != null && (d.getIsDeleted() == null || !d.getIsDeleted()))
+                                        .filter(d -> {
+                                            if (isR0) {
+                                                if (d.getQuotationNo() != null && d.getQuotationNo().toUpperCase().matches(".*/R[1-9]\\d*$")) return false;
+                                                if (d.getFileUrl() != null && d.getFileUrl().matches("(?i).*/R[1-9]\\d*/.*")) return false;
+                                            } else {
+                                                if (d.getQuotationNo() != null && !d.getQuotationNo().toUpperCase().endsWith("/" + revCode.toUpperCase())) return false;
+                                            }
+                                            return true;
+                                        })
+                                        .collect(Collectors.toList());
                             }
                         }
                     }
@@ -512,34 +569,73 @@ public ResponseEntity<ApiResponse<Lead>> getDetails(@PathVariable Long id) {
 
             map.put("id", rev.getId());
             map.put("revisionNo", revCode);
-            map.put("quotationNo", rev.getQuotationNo());
+            String rawQtn = rev.getQuotationNo() != null ? rev.getQuotationNo() : "";
+            String baseQuot = rawQtn.replaceAll("/R\\d+$", "");
+            String computedQuotNo = "R0".equalsIgnoreCase(revCode) ? baseQuot : (baseQuot.isBlank() ? rawQtn : (baseQuot + "/" + revCode.toUpperCase()));
+            map.put("quotationNo", computedQuotNo);
             map.put("quotationAmount", rev.getQuotationAmount());
             map.put("negotiationStatus", rev.getNegotiationStatus());
             map.put("remarks", rev.getRemarks());
-            map.put("enquiryDescription", rev.getEnquiryDescription());
             map.put("quotationDate", rev.getQuotationDate());
+            map.put("quotationWorkingDate", rev.getQuotationDate());
+            
+            String quotationSentDate = null;
+            if (rev.getQuotationSentDate() != null) {
+                quotationSentDate = rev.getQuotationSentDate().toString();
+            } else if ("R0".equalsIgnoreCase(revCode) && negotiation.getLeadIdFk() != null) {
+                Optional<Lead> leadOptSent = leadRepository.findById(negotiation.getLeadIdFk());
+                if (leadOptSent.isPresent() && leadOptSent.get().getQuotationSentDate() != null) {
+                    quotationSentDate = leadOptSent.get().getQuotationSentDate().toString();
+                }
+            }
+            map.put("quotationSentDate", quotationSentDate);
+            map.put("sentQuotationDate", quotationSentDate);
             map.put("updatedDate", rev.getUpdatedDate());
             
             // Get documents using revision ID or exact quotationNo match
+            boolean isR0 = "R0".equalsIgnoreCase(revCode);
+            String targetQuot = isR0 ? baseQuot : (baseQuot + "/" + revCode.toUpperCase());
+
             List<Document> documents = documentRepository.findByNegotiationRevisionId(rev.getId());
+            if (documents != null) {
+                documents = documents.stream()
+                        .filter(d -> {
+                            if (d == null || (d.getIsDeleted() != null && d.getIsDeleted())) return false;
+                            if (isR0) {
+                                if (d.getQuotationNo() != null && d.getQuotationNo().toUpperCase().matches(".*/R[1-9]\\d*$")) return false;
+                                if (d.getFileUrl() != null && d.getFileUrl().matches("(?i).*/R[1-9]\\d*/.*")) return false;
+                            } else {
+                                boolean matchesRev = (d.getQuotationNo() != null && d.getQuotationNo().toUpperCase().endsWith("/" + revCode.toUpperCase()))
+                                        || (d.getFileUrl() != null && d.getFileUrl().toUpperCase().contains("/" + revCode.toUpperCase() + "/"));
+                                if (!matchesRev && d.getNegotiationRevision() != null) {
+                                    String rRev = d.getNegotiationRevision().getQuotationRevision();
+                                    if (rRev != null && !rRev.equalsIgnoreCase(revCode)) return false;
+                                }
+                            }
+                            return true;
+                        })
+                        .collect(Collectors.toList());
+            }
+
             if (documents == null || documents.isEmpty()) {
-                String quotationNo = rev.getQuotationNo();
-                if (quotationNo != null && !quotationNo.isBlank()) {
-                    boolean isR0 = "R0".equalsIgnoreCase(revCode);
-                    boolean matchesRevSuffix = quotationNo.toUpperCase().endsWith("/" + revCode.toUpperCase());
-                    if (isR0 || matchesRevSuffix) {
-                        List<Document> byQtn = documentRepository.findByQuotationNo(quotationNo);
-                        if (byQtn != null) {
-                            documents = byQtn.stream()
-                                    .filter(d -> d != null && d.getQuotationNo() != null && quotationNo.equalsIgnoreCase(d.getQuotationNo()))
-                                    .filter(d -> {
-                                        if (isR0 && d.getFileUrl() != null && d.getFileUrl().contains("/R")) {
-                                            return false;
-                                        }
-                                        return true;
-                                    })
-                                    .collect(Collectors.toList());
-                        }
+                if (!targetQuot.isBlank()) {
+                    List<Document> byQtn = documentRepository.findByQuotationNo(targetQuot);
+                    if (byQtn == null || byQtn.isEmpty()) {
+                        byQtn = documentRepository.findByQuotationNo(targetQuot.replace("/", "_"));
+                    }
+                    if (byQtn != null) {
+                        documents = byQtn.stream()
+                                .filter(d -> d != null && (d.getIsDeleted() == null || !d.getIsDeleted()))
+                                .filter(d -> {
+                                    if (isR0) {
+                                        if (d.getQuotationNo() != null && d.getQuotationNo().toUpperCase().matches(".*/R[1-9]\\d*$")) return false;
+                                        if (d.getFileUrl() != null && d.getFileUrl().matches("(?i).*/R[1-9]\\d*/.*")) return false;
+                                    } else {
+                                        if (d.getQuotationNo() != null && !d.getQuotationNo().toUpperCase().endsWith("/" + revCode.toUpperCase())) return false;
+                                    }
+                                    return true;
+                                })
+                                .collect(Collectors.toList());
                     }
                 }
             }

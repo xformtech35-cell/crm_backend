@@ -18,51 +18,59 @@ public interface LeadRepository extends JpaRepository<Lead, Long>, JpaSpecificat
     List<Lead> findByUserIdFkAndLeadStatus(Long userIdFk, String leadStatus);
     List<Lead> findByLeadAssignedMember(Long leadAssignedMember);
     List<Lead> findByLeadAssignedMemberAndLeadStatus(Long leadAssignedMember, String leadStatus);
+    List<Lead> findByQuotationNumber(String quotationNumber);
 
-    @Query("SELECT l FROM Lead l WHERE (l.userIdFk IN :userIds OR l.leadAssignedMember IN :userIds) ORDER BY l.leadId DESC")
+    @Query("SELECT l FROM Lead l WHERE (l.groupId = :companyAdminId OR l.userIdFk IN :userIds OR l.leadAssignedMember IN :userIds) AND (l.isDeleted = false OR l.isDeleted IS NULL) ORDER BY l.leadId DESC")
+    List<Lead> findByCompanyAdminCriteria(@Param("companyAdminId") Long companyAdminId, @Param("userIds") List<Long> userIds);
+
+    @Query("SELECT l FROM Lead l WHERE (l.userIdFk IN :userIds OR l.leadAssignedMember IN :userIds) AND (l.isDeleted = false OR l.isDeleted IS NULL) ORDER BY l.leadId DESC")
     List<Lead> findByUserIdFkInOrLeadAssignedMemberIn(@Param("userIds") List<Long> userIds);
 
-    @Query("SELECT DISTINCT l FROM Lead l WHERE (l.userIdFk IN :userIds OR l.leadAssignedMember IN :userIds OR l.leadAssignedTeam IN :teamIds OR LOWER(l.createdBy) IN :emails OR LOWER(l.updatedBy) IN :emails) ORDER BY l.leadId DESC")
+    @Query("SELECT DISTINCT l FROM Lead l WHERE l.leadAssignedTeam IN :teamIds AND (l.isDeleted = false OR l.isDeleted IS NULL) ORDER BY l.leadId DESC")
+    List<Lead> findByTeamDataCriteria(@Param("teamIds") List<Long> teamIds);
+
+    @Query("SELECT DISTINCT l FROM Lead l WHERE (l.userIdFk IN :userIds OR l.leadAssignedMember IN :userIds OR l.leadAssignedTeam IN :teamIds OR LOWER(l.createdBy) IN :emails OR LOWER(l.updatedBy) IN :emails) AND (l.isDeleted = false OR l.isDeleted IS NULL) ORDER BY l.leadId DESC")
     List<Lead> findByTeamLeadCriteria(@Param("userIds") List<Long> userIds, @Param("teamIds") List<Long> teamIds, @Param("emails") List<String> emails);
 
-    @Query("SELECT l FROM Lead l WHERE (l.userIdFk IN :userIds OR l.leadAssignedMember IN :userIds) AND l.leadStatus = :status ORDER BY l.leadId DESC")
+    @Query("SELECT l FROM Lead l WHERE (l.userIdFk IN :userIds OR l.leadAssignedMember IN :userIds) AND l.leadStatus = :status AND (l.isDeleted = false OR l.isDeleted IS NULL) ORDER BY l.leadId DESC")
     List<Lead> findByUserIdFkInAndLeadStatus(@Param("userIds") List<Long> userIds, @Param("status") String status);
 
-    @Query("SELECT l FROM Lead l WHERE (l.userIdFk = :userId OR l.leadAssignedMember = :userId) ORDER BY l.leadId DESC")
+    @Query("SELECT l FROM Lead l WHERE (l.userIdFk = :userId OR l.leadAssignedMember = :userId) AND (l.isDeleted = false OR l.isDeleted IS NULL) ORDER BY l.leadId DESC")
     List<Lead> findByUserIdFkOrLeadAssignedMember(@Param("userId") Long userId);
 
-    @Query("SELECT l FROM Lead l WHERE (l.userIdFk = :userId OR l.leadAssignedMember = :userId) AND l.leadStatus = :status ORDER BY l.leadId DESC")
+    @Query("SELECT l FROM Lead l WHERE (l.userIdFk = :userId OR l.leadAssignedMember = :userId) AND l.leadStatus = :status AND (l.isDeleted = false OR l.isDeleted IS NULL) ORDER BY l.leadId DESC")
     List<Lead> findByUserIdFkOrLeadAssignedMemberAndLeadStatus(@Param("userId") Long userId, @Param("status") String status);
 
     @Query("SELECT DISTINCT l FROM Lead l WHERE " +
-           "(l.userIdFk = :userId OR " +
+           "((l.userIdFk = :userId OR " +
            "l.leadAssignedMember = :userId OR " +
-           "(:teamMemberId IS NOT NULL AND l.leadAssignedMember = :teamMemberId) OR " +
-           "(:userEmail IS NOT NULL AND LOWER(l.createdBy) = LOWER(:userEmail)) OR " +
-           "(:teamMemberName IS NOT NULL AND LOWER(l.leadRef) = LOWER(:teamMemberName))) " +
+           "(:teamMemberId IS NOT NULL AND (l.leadAssignedMember = :teamMemberId OR l.leadId IN (SELECT lm.leadIdFk FROM LeadMember lm WHERE lm.teamMemberIdFk = :teamMemberId))) OR " +
+           "(:userEmail IS NOT NULL AND LOWER(l.createdBy) = LOWER(:userEmail))) AND " +
+           "(l.isDeleted = false OR l.isDeleted IS NULL)) " +
            "ORDER BY l.leadId DESC")
     List<Lead> findByOwnDataCriteria(
         @Param("userId") Long userId,
         @Param("teamMemberId") Long teamMemberId,
-        @Param("userEmail") String userEmail,
-        @Param("teamMemberName") String teamMemberName
+        @Param("userEmail") String userEmail
     );
 
     @Query("SELECT DISTINCT l FROM Lead l WHERE " +
            "((l.userIdFk = :userId OR " +
            "l.leadAssignedMember = :userId OR " +
-           "(:teamMemberId IS NOT NULL AND l.leadAssignedMember = :teamMemberId) OR " +
-           "(:userEmail IS NOT NULL AND LOWER(l.createdBy) = LOWER(:userEmail)) OR " +
-           "(:teamMemberName IS NOT NULL AND LOWER(l.leadRef) = LOWER(:teamMemberName))) AND " +
-           "l.leadStatus = :status) " +
+           "(:teamMemberId IS NOT NULL AND (l.leadAssignedMember = :teamMemberId OR l.leadId IN (SELECT lm.leadIdFk FROM LeadMember lm WHERE lm.teamMemberIdFk = :teamMemberId))) OR " +
+           "(:userEmail IS NOT NULL AND LOWER(l.createdBy) = LOWER(:userEmail))) AND " +
+           "l.leadStatus = :status AND " +
+           "(l.isDeleted = false OR l.isDeleted IS NULL)) " +
            "ORDER BY l.leadId DESC")
     List<Lead> findByOwnDataCriteriaAndStatus(
         @Param("userId") Long userId,
         @Param("teamMemberId") Long teamMemberId,
         @Param("userEmail") String userEmail,
-        @Param("teamMemberName") String teamMemberName,
         @Param("status") String status
     );
+
+
+
 
 
     Optional<Lead> findByUniqueQueryId(String uniqueQueryId);

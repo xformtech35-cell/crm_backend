@@ -47,5 +47,8 @@ public class LeadRequest {
     private LocalDate quotationSentDate;
     private String createdBy;
     private String updatedBy;
+    private Boolean sendToMainLeads;
+    private java.util.List<Long> assignedMemberIds;
 }
+
 

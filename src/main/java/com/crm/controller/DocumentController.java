@@ -43,16 +43,17 @@ public class DocumentController {
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<?> uploadDocuments(
             @RequestParam("quotationNo") String quotationNo,
+            @RequestParam(value = "leadId", required = false) Long leadId,
             @RequestParam("files") List<MultipartFile> files) {
         
         try {
-            log.info("Uploading {} documents for quotation: {}", files.size(), quotationNo);
+            log.info("Uploading {} documents for quotation: {}, leadId: {}", files.size(), quotationNo, leadId);
             
             if (files == null || files.isEmpty()) {
                 return ResponseEntity.badRequest().body("No files to upload");
             }
             
-            List<DocumentResponse> responses = documentService.uploadDocuments(quotationNo, files);
+            List<DocumentResponse> responses = documentService.uploadDocuments(quotationNo, leadId, files);
             return new ResponseEntity<>(responses, HttpStatus.CREATED);
             
         } catch (Exception e) {
@@ -129,11 +130,12 @@ public class DocumentController {
      */
     @DeleteMapping
     public ResponseEntity<?> deleteAllDocumentsByQuotationNo(
-            @RequestParam("quotationNo") String quotationNo) {
+            @RequestParam("quotationNo") String quotationNo,
+            @RequestParam(value = "leadId", required = false) Long leadId) {
         
         try {
-            log.info("Deleting all documents for quotation: {}", quotationNo);
-            documentService.deleteAllDocumentsByQuotationNo(quotationNo);
+            log.info("Deleting all documents for quotation: {}, leadId: {}", quotationNo, leadId);
+            documentService.deleteAllDocumentsByQuotationNo(quotationNo, leadId);
             return ResponseEntity.noContent().build();
         } catch (Exception e) {
             log.error("Error deleting documents: {}", e.getMessage());

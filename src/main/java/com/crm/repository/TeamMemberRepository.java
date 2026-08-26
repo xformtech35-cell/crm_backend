@@ -18,6 +18,10 @@ public interface TeamMemberRepository extends JpaRepository<TeamMember, Long> {
     default Optional<TeamMember> findByTeamMemberEmail(String email) {
         return findFirstByTeamMemberEmail(email);
     }
+    Optional<TeamMember> findFirstByTeamMemberName(String name);
+    default Optional<TeamMember> findByTeamMemberName(String name) {
+        return findFirstByTeamMemberName(name);
+    }
     long countByTeamMemberRole(Long roleId);
 
     @Modifying

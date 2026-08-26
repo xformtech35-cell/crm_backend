@@ -59,6 +59,9 @@ public class User {
     @Column(name = "reset_password_token_expiry")
     private java.time.LocalDateTime resetPasswordTokenExpiry;
 
+    @Column(name = "group_id")
+    private Long groupId;
+
     public boolean isIntegrationsAccess() {
         return integrationsAccess != null && integrationsAccess;
     }

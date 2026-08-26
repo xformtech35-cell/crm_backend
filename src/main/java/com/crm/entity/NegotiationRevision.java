@@ -59,6 +59,9 @@ public class NegotiationRevision {
     @Column(name = "quotation_date")
     private LocalDate quotationDate;
 
+    @Column(name = "quotation_sent_date")
+    private LocalDate quotationSentDate;
+
     @Column(name = "user_id_fk")
     private Long userIdFk;
 

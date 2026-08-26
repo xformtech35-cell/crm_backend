@@ -9,6 +9,8 @@ import com.crm.dto.response.ApiResponse;
 import com.crm.entity.LeadGroupsMaster;
 import com.crm.entity.LeadSourceMaster;
 import com.crm.entity.LeadStatusMaster;
+import com.crm.entity.QuotationStatusMaster;
+import com.crm.repository.QuotationStatusRepository;
 import com.crm.entity.Lead;
 import com.crm.entity.LeadNote;
 import com.crm.entity.LeadReminder;
@@ -48,6 +50,8 @@ public class LeadController {
     private final LeadSourceRepository leadSourceRepository;
     private final LeadGroupRepository leadGroupRepository;
     private final LeadStatusRepository leadStatusRepository;
+    private final QuotationStatusRepository quotationStatusRepository;
+
 
     private final LeadRepository leadRepository;
     private final NegotiationRepository negotiationRepository;
@@ -254,9 +258,11 @@ public class LeadController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<ApiResponse<Lead>> getLeadById(@PathVariable Long id) {
-        return ResponseEntity.ok(ApiResponse.success("Lead fetched", leadService.getLeadById(id)));
+    public ResponseEntity<ApiResponse<Lead>> getLeadById(@PathVariable Long id, Authentication auth) {
+        User user = auth != null ? authUtil.getCurrentUser(auth) : null;
+        return ResponseEntity.ok(ApiResponse.success("Lead fetched", leadService.getLeadById(id, user)));
     }
+
 
     @GetMapping("/status/{status}")
     public ResponseEntity<ApiResponse<List<Lead>>> getLeadsByStatus(@PathVariable String status, Authentication auth) {
@@ -333,6 +339,21 @@ public class LeadController {
         User user = authUtil.getCurrentUser(auth);
         return ResponseEntity.ok(ApiResponse.success("Enquiry status updated",
                 leadService.updateLeadEnquiryStatus(id, body.get("enquiryStatus"), user)));
+    }
+
+    @PatchMapping("/{id}/send-to-main-leads")
+    public ResponseEntity<ApiResponse<Lead>> updateSendToMainLeads(@PathVariable Long id,
+            @RequestBody Map<String, Object> body, Authentication auth) {
+        User user = null;
+        try {
+            if (auth != null) {
+                user = authUtil.getCurrentUser(auth);
+            }
+        } catch (Exception ignored) {}
+        Object rawVal = body != null ? body.get("sendToMainLeads") : null;
+        Boolean sendVal = Boolean.TRUE.equals(rawVal) || "true".equalsIgnoreCase(String.valueOf(rawVal));
+        return ResponseEntity.ok(ApiResponse.success("Send to main leads updated",
+                leadService.updateSendToMainLeads(id, sendVal, user)));
     }
 
 
@@ -825,9 +846,119 @@ public class LeadController {
         return ResponseEntity.ok(ApiResponse.success("Lead status deleted", null));
     }
 
-    
+    // ========== QUOTATION STATUS ENDPOINTS ==========
+    @GetMapping("/quotation-status")
+    public ResponseEntity<ApiResponse<List<QuotationStatusMaster>>> getAllQuotationStatuses(Authentication auth) {
+        User user = authUtil.getCurrentUser(auth);
+        List<QuotationStatusMaster> statuses;
+        Long companyAdminId = authUtil.getCompanyAdminId(user);
+        if (companyAdminId != null) {
+            statuses = quotationStatusRepository.findActiveByUserIdFkOrGlobal(companyAdminId);
+        } else {
+            statuses = quotationStatusRepository.findByActiveTrue();
+        }
+        statuses = statuses.stream()
+                .filter(s -> s != null && s.getStatusName() != null && !s.getStatusName().trim().isEmpty() && !"null".equalsIgnoreCase(s.getStatusName().trim()))
+                .collect(java.util.stream.Collectors.toList());
+        return ResponseEntity.ok(ApiResponse.success("Quotation statuses fetched", statuses));
+    }
+
+    @GetMapping("/quotation-status/{id}")
+    public ResponseEntity<ApiResponse<QuotationStatusMaster>> getQuotationStatusById(@PathVariable Long id) {
+        QuotationStatusMaster status = quotationStatusRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Quotation status not found with id: " + id));
+        return ResponseEntity.ok(ApiResponse.success("Quotation status fetched", status));
+    }
+
+    @PostMapping("/quotation-status")
+    public ResponseEntity<ApiResponse<QuotationStatusMaster>> createQuotationStatus(
+            @Valid @RequestBody QuotationStatusMaster status, Authentication auth) {
+        User user = authUtil.getCurrentUser(auth);
+        String name = status.getStatusName() != null ? status.getStatusName().trim() : "";
+        if (name.isEmpty()) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("Quotation status name cannot be empty"));
+        }
+
+        Long companyAdminId = authUtil.getCompanyAdminId(user);
+        if (companyAdminId == null) {
+            companyAdminId = user.getUserid();
+        }
+
+        List<QuotationStatusMaster> existing = quotationStatusRepository.findActiveByUserIdFkOrGlobal(companyAdminId);
+        boolean duplicate = existing.stream()
+                .anyMatch(s -> s.getStatusName() != null && s.getStatusName().trim().equalsIgnoreCase(name));
+        if (duplicate) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("Quotation status '" + name + "' already exists!"));
+        }
+
+        status.setId(null);
+        status.setStatusName(name);
+        status.setActive(true);
+        status.setUserIdFk(companyAdminId);
+        QuotationStatusMaster saved = quotationStatusRepository.save(status);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success("Quotation status created", saved));
+    }
+
+    @PutMapping("/quotation-status/{id}")
+    public ResponseEntity<ApiResponse<QuotationStatusMaster>> updateQuotationStatus(@PathVariable Long id,
+            @Valid @RequestBody QuotationStatusMaster status, Authentication auth) {
+        QuotationStatusMaster existingStatus = quotationStatusRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Quotation status not found with id: " + id));
+
+        User user = authUtil.getCurrentUser(auth);
+        Long companyAdminId = authUtil.getCompanyAdminId(user);
+        if (companyAdminId == null) {
+            companyAdminId = user.getUserid();
+        }
+
+        String name = status.getStatusName() != null ? status.getStatusName().trim() : "";
+        if (name.isEmpty()) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("Quotation status name cannot be empty"));
+        }
+
+        List<QuotationStatusMaster> existing = quotationStatusRepository.findActiveByUserIdFkOrGlobal(companyAdminId);
+        boolean duplicate = existing.stream()
+                .anyMatch(s -> s.getStatusName() != null && s.getStatusName().trim().equalsIgnoreCase(name) && !s.getId().equals(id));
+        if (duplicate) {
+            return ResponseEntity.badRequest().body(ApiResponse.error("Quotation status '" + name + "' already exists!"));
+        }
+
+        existingStatus.setStatusName(name);
+        existingStatus.setDescription(status.getDescription());
+        if (companyAdminId != null && existingStatus.getUserIdFk() == null) {
+            existingStatus.setUserIdFk(companyAdminId);
+        }
+        QuotationStatusMaster updated = quotationStatusRepository.save(existingStatus);
+        return ResponseEntity.ok(ApiResponse.success("Quotation status updated", updated));
+    }
+
+    @DeleteMapping("/quotation-status/{id}")
+    public ResponseEntity<ApiResponse<Void>> deleteQuotationStatus(@PathVariable Long id, Authentication auth) {
+        QuotationStatusMaster status = quotationStatusRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Quotation status not found"));
+        User user = authUtil.getCurrentUser(auth);
+        Long companyAdminId = authUtil.getCompanyAdminId(user);
+        if (companyAdminId == null) {
+            companyAdminId = user.getUserid();
+        }
+
+        if (status.getUserIdFk() == null) {
+            QuotationStatusMaster companyOverride = new QuotationStatusMaster();
+            companyOverride.setStatusName(status.getStatusName());
+            companyOverride.setDescription(status.getDescription());
+            companyOverride.setActive(false);
+            companyOverride.setUserIdFk(companyAdminId);
+            quotationStatusRepository.save(companyOverride);
+        } else {
+            status.setActive(false);
+            quotationStatusRepository.save(status);
+        }
+        return ResponseEntity.ok(ApiResponse.success("Quotation status deleted", null));
+    }
 
     @PostMapping("/{leadId}/convert-to-negotiation")
+
     public ResponseEntity<ApiResponse<Negotiation>> convertToNegotiation(@PathVariable Long leadId) {
 
         // Find Lead
