@@ -21,8 +21,7 @@ public class TeamService {
         if (authUtil.isSuperAdmin(role)) {
             return teamRepository.findAll();
         }
-        String scopeMode = authUtil.resolveDataScopeMode(user, "TEAMS");
-        if ("ALL_DATA".equals(scopeMode)) {
+        if (companyAdminId != null) {
             return teamRepository.findByUserIdFk(companyAdminId);
         }
         return authUtil.getLedTeamsForUser(user);
