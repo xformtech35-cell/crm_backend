@@ -39,10 +39,10 @@ public class CalendarNotification {
     @Builder.Default
     private String channel = "IN_APP"; // IN_APP, WEBSOCKET, EMAIL
 
-    @Column(name = "title")
+    @Column(name = "title", length = 500)
     private String title;
 
-    @Column(name = "message")
+    @Column(name = "message", columnDefinition = "TEXT")
     private String message;
 
     @Column(name = "created_at", updatable = false)

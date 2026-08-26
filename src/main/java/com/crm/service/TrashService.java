@@ -1,13 +1,19 @@
 package com.crm.service;
 
 import com.crm.dto.response.TrashItemResponse;
+import com.crm.entity.CalendarNotification;
+import com.crm.entity.Lead;
 import com.crm.entity.Role;
 import com.crm.entity.Team;
 import com.crm.entity.TeamMember;
 import com.crm.entity.User;
+import com.crm.exception.ResourceNotFoundException;
+import com.crm.repository.CalendarNotificationRepository;
+import com.crm.repository.LeadRepository;
 import com.crm.repository.PermissionRepository;
 import com.crm.repository.RoleRepository;
 import com.crm.repository.TeamMemberRepository;
+import com.crm.repository.TeamRepository;
 import com.crm.repository.UserRepository;
 import com.crm.util.AuthUtil;
 import jakarta.persistence.EntityManager;
@@ -19,10 +25,9 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Optional;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -36,7 +41,12 @@ public class TrashService {
     private final RoleRepository roleRepository;
     private final UserRepository userRepository;
     private final TeamMemberRepository teamMemberRepository;
+    private final TeamRepository teamRepository;
+    private final LeadRepository leadRepository;
+    private final CalendarNotificationRepository calendarNotificationRepository;
     private final AuthUtil authUtil;
+
+    private static final DateTimeFormatter NOTIF_DATE_FMT = DateTimeFormatter.ofPattern("dd-MMM-yyyy HH:mm");
 
     private boolean userHasPermission(User user, String permissionKey) {
         if (user == null) return false;
@@ -53,10 +63,9 @@ public class TrashService {
             if (companyAdminRole.isPresent()) {
                 return permissionRepository.existsByRoleIdFkAndGrpPerm(companyAdminRole.get().getRoleId(), permissionKey);
             }
-            return true; // default admin allows
+            return true;
         }
 
-        // For non-admin, look up role
         String roleStr = user.getRole();
         if (roleStr != null) {
             try {
@@ -77,7 +86,6 @@ public class TrashService {
             }
         }
 
-        // Default allow view and restore for logged in users on their own data
         if ("trash.view".equals(permissionKey) || "trash.restore".equals(permissionKey)) {
             return true;
         }
@@ -95,8 +103,7 @@ public class TrashService {
         String scopeMode = authUtil.resolveDataScopeMode(currentUser, "TRASH");
         
         List<Long> ledTeamIds = authUtil.getTeamLeadTeamIds(currentUser);
-        List<Long> ledMemberIds = authUtil.getTeamLeadMemberUserIds(currentUser);
-        List<Long> ledUserIds = ledMemberIds;
+        List<Long> ledUserIds = authUtil.getTeamLeadMemberUserIds(currentUser);
         
         Long myMemberId = teamMemberRepository.findByTeamMemberEmail(currentUser.getUserEmail())
                 .map(TeamMember::getTeamMemberId)
@@ -120,7 +127,6 @@ public class TrashService {
                 scopeMode,
                 companyAdminId,
                 ledTeamIds,
-                ledMemberIds,
                 ledUserIds,
                 myMemberId,
                 true);
@@ -141,7 +147,6 @@ public class TrashService {
                 scopeMode,
                 companyAdminId,
                 ledTeamIds,
-                ledMemberIds,
                 ledUserIds,
                 myMemberId,
                 false);
@@ -162,7 +167,6 @@ public class TrashService {
                 scopeMode,
                 companyAdminId,
                 ledTeamIds,
-                ledMemberIds,
                 ledUserIds,
                 myMemberId,
                 false);
@@ -183,7 +187,6 @@ public class TrashService {
                 scopeMode,
                 companyAdminId,
                 ledTeamIds,
-                ledMemberIds,
                 ledUserIds,
                 myMemberId,
                 false);
@@ -204,7 +207,6 @@ public class TrashService {
                 scopeMode,
                 companyAdminId,
                 ledTeamIds,
-                ledMemberIds,
                 ledUserIds,
                 myMemberId,
                 false);
@@ -225,7 +227,6 @@ public class TrashService {
                 scopeMode,
                 companyAdminId,
                 ledTeamIds,
-                ledMemberIds,
                 ledUserIds,
                 myMemberId,
                 false);
@@ -246,7 +247,6 @@ public class TrashService {
                 scopeMode,
                 companyAdminId,
                 ledTeamIds,
-                ledMemberIds,
                 ledUserIds,
                 myMemberId,
                 false);
@@ -267,7 +267,6 @@ public class TrashService {
                 scopeMode,
                 companyAdminId,
                 ledTeamIds,
-                ledMemberIds,
                 ledUserIds,
                 myMemberId,
                 false);
@@ -291,7 +290,6 @@ public class TrashService {
                                   String scopeMode,
                                   Long companyAdminId,
                                   List<Long> ledTeamIds,
-                                  List<Long> ledMemberIds,
                                   List<Long> ledUserIds,
                                   Long myMemberId,
                                   boolean isLeadTable) {
@@ -319,10 +317,8 @@ public class TrashService {
                     if (ledTeamIds != null && !ledTeamIds.isEmpty()) {
                         conditions.add("lead_assigned_team IN (" + ledTeamIds.stream().map(String::valueOf).collect(Collectors.joining(",")) + ")");
                     }
-                    if (ledMemberIds != null && !ledMemberIds.isEmpty()) {
-                        conditions.add("lead_assigned_member IN (" + ledMemberIds.stream().map(String::valueOf).collect(Collectors.joining(",")) + ")");
-                    }
                     if (ledUserIds != null && !ledUserIds.isEmpty()) {
+                        conditions.add("lead_assigned_member IN (" + ledUserIds.stream().map(String::valueOf).collect(Collectors.joining(",")) + ")");
                         conditions.add("user_id_fk IN (" + ledUserIds.stream().map(String::valueOf).collect(Collectors.joining(",")) + ")");
                     }
                     if (!conditions.isEmpty()) {
@@ -395,10 +391,79 @@ public class TrashService {
         }
     }
 
+    @Transactional(readOnly = true)
+    public boolean isRecordInUserScope(String moduleKey, Long recordId, User currentUser) {
+        if (currentUser == null || recordId == null) return false;
+        if (authUtil.isSuperAdmin(currentUser.getRole()) || authUtil.isAdmin(currentUser.getRole())) {
+            return true;
+        }
+
+        String tableName = getTableName(moduleKey);
+        String idCol = getIdColumn(moduleKey);
+
+        String scopeMode = authUtil.resolveDataScopeMode(currentUser, "TRASH");
+        List<Long> ledTeamIds = authUtil.getTeamLeadTeamIds(currentUser);
+        List<Long> ledUserIds = authUtil.getTeamLeadMemberUserIds(currentUser);
+        Long myMemberId = teamMemberRepository.findByTeamMemberEmail(currentUser.getUserEmail())
+                .map(TeamMember::getTeamMemberId)
+                .orElse(null);
+
+        if ("leads".equalsIgnoreCase(moduleKey)) {
+            if ("TEAM_DATA".equals(scopeMode) || authUtil.isTeamLead(currentUser.getRole())) {
+                String sql = "SELECT COUNT(*) FROM " + tableName + " WHERE " + idCol + " = :id AND (" +
+                        " (lead_assigned_team IS NOT NULL AND lead_assigned_team IN (:teamIds))" +
+                        " OR (lead_assigned_member IS NOT NULL AND lead_assigned_member IN (:memberIds))" +
+                        " OR (user_id_fk IS NOT NULL AND user_id_fk IN (:userIds))" +
+                        ")";
+                Query query = entityManager.createNativeQuery(sql)
+                        .setParameter("id", recordId)
+                        .setParameter("teamIds", ledTeamIds.isEmpty() ? List.of(-1L) : ledTeamIds)
+                        .setParameter("memberIds", ledUserIds.isEmpty() ? List.of(-1L) : ledUserIds)
+                        .setParameter("userIds", ledUserIds.isEmpty() ? List.of(-1L) : ledUserIds);
+                Number count = (Number) query.getSingleResult();
+                return count != null && count.longValue() > 0;
+            } else {
+                // OWN_DATA_ONLY
+                String sql = "SELECT COUNT(*) FROM " + tableName + " WHERE " + idCol + " = :id AND (" +
+                        " (lead_assigned_member IS NOT NULL AND lead_assigned_member = :memberId)" +
+                        " OR (user_id_fk IS NOT NULL AND user_id_fk = :userId)" +
+                        " OR (lead_id IN (SELECT lead_id_fk FROM crm_xformsales_lead_member WHERE team_member_id_fk = :memberId))" +
+                        ")";
+                Query query = entityManager.createNativeQuery(sql)
+                        .setParameter("id", recordId)
+                        .setParameter("memberId", myMemberId != null ? myMemberId : -1L)
+                        .setParameter("userId", currentUser.getUserid() != null ? currentUser.getUserid() : -1L);
+                Number count = (Number) query.getSingleResult();
+                return count != null && count.longValue() > 0;
+            }
+        } else {
+            // Generic entity check on user_id_fk
+            if ("TEAM_DATA".equals(scopeMode) || authUtil.isTeamLead(currentUser.getRole())) {
+                String sql = "SELECT COUNT(*) FROM " + tableName + " WHERE " + idCol + " = :id AND user_id_fk IN (:userIds)";
+                Query query = entityManager.createNativeQuery(sql)
+                        .setParameter("id", recordId)
+                        .setParameter("userIds", ledUserIds.isEmpty() ? List.of(-1L) : ledUserIds);
+                Number count = (Number) query.getSingleResult();
+                return count != null && count.longValue() > 0;
+            } else {
+                String sql = "SELECT COUNT(*) FROM " + tableName + " WHERE " + idCol + " = :id AND user_id_fk = :userId";
+                Query query = entityManager.createNativeQuery(sql)
+                        .setParameter("id", recordId)
+                        .setParameter("userId", currentUser.getUserid() != null ? currentUser.getUserid() : -1L);
+                Number count = (Number) query.getSingleResult();
+                return count != null && count.longValue() > 0;
+            }
+        }
+    }
+
     @Transactional
     public void restoreItem(String moduleKey, Long recordId, User currentUser) {
         if (!userHasPermission(currentUser, "trash.restore")) {
             throw new AccessDeniedException("Access denied: You do not have permission to restore trash items");
+        }
+
+        if (!isRecordInUserScope(moduleKey, recordId, currentUser)) {
+            throw new AccessDeniedException("Access Denied: You do not have permission to restore this record.");
         }
 
         String tableName = getTableName(moduleKey);
@@ -413,24 +478,166 @@ public class TrashService {
     }
 
     @Transactional
-    public void deletePermanently(String moduleKey, Long recordId, User currentUser) {
-        boolean isAdmin = authUtil.isAdmin(currentUser.getRole()) || authUtil.isSuperAdmin(currentUser.getRole()) || userHasPermission(currentUser, "trash.delete");
-        
-        if (!isAdmin) {
-            log.warn("User {} ({}) attempted permanent deletion of {} ID {} without admin privileges. Admin notification triggered.", 
-                    currentUser.getUsername(), currentUser.getUserEmail(), moduleKey, recordId);
-            throw new AccessDeniedException("Permanent deletion is restricted to Administrators. A notification has been sent to the Company Administrator.");
+    public Map<String, Object> requestPermanentDelete(String moduleKey, Long recordId, String reason, User currentUser) {
+        if (!isRecordInUserScope(moduleKey, recordId, currentUser)) {
+            throw new AccessDeniedException("Access Denied: You do not have authorization to request deletion for this record.");
         }
 
         String tableName = getTableName(moduleKey);
         String idCol = getIdColumn(moduleKey);
 
-        String sql = "DELETE FROM " + tableName + " WHERE " + idCol + " = :id";
-        entityManager.createNativeQuery(sql)
-                .setParameter("id", recordId)
-                .executeUpdate();
+        // Fetch record details
+        String requesterName = currentUser.getUsername() != null ? currentUser.getUsername() : currentUser.getUserEmail();
+        String recordName = moduleKey + " #" + recordId;
+        Long assignedTeamId = null;
+        String teamName = "Unassigned";
+        String primaryMemberName = "Unassigned";
+        List<String> jointMemberNames = new ArrayList<>();
 
-        log.info("Administrator {} ({}) permanently deleted {} record ID {}", currentUser.getUsername(), currentUser.getUserEmail(), moduleKey, recordId);
+        if ("leads".equalsIgnoreCase(moduleKey)) {
+            try {
+                String sql = "SELECT lead_organisation_name, lead_first_name, lead_last_name, lead_assigned_team, lead_assigned_member FROM crm_xformsales_lead WHERE lead_id = :id";
+                Query query = entityManager.createNativeQuery(sql).setParameter("id", recordId);
+                List<Object[]> rows = query.getResultList();
+                if (!rows.isEmpty()) {
+                    Object[] row = rows.get(0);
+                    String org = row[0] != null ? row[0].toString().trim() : "";
+                    String fn = row[1] != null ? row[1].toString().trim() : "";
+                    String ln = row[2] != null ? row[2].toString().trim() : "";
+                    String fullName = (fn + " " + ln).trim();
+                    if (!org.isBlank()) recordName = org;
+                    else if (!fullName.isBlank()) recordName = fullName;
+
+                    if (row[3] != null) {
+                        assignedTeamId = ((Number) row[3]).longValue();
+                        teamRepository.findById(assignedTeamId).ifPresent(t -> {});
+                        Optional<Team> tOpt = teamRepository.findById(assignedTeamId);
+                        if (tOpt.isPresent()) teamName = tOpt.get().getTeamName();
+                    }
+
+                    if (row[4] != null) {
+                        Long pMemberId = ((Number) row[4]).longValue();
+                        teamMemberRepository.findById(pMemberId).ifPresent(tm -> {});
+                        Optional<TeamMember> tmOpt = teamMemberRepository.findById(pMemberId);
+                        if (tmOpt.isPresent()) primaryMemberName = tmOpt.get().getTeamMemberName();
+                    }
+
+                    // Joint Members
+                    String jmSql = "SELECT tm.team_member_name FROM crm_xformsales_lead_member lm JOIN crm_xformsales_team_member tm ON lm.team_member_id_fk = tm.team_member_id WHERE lm.lead_id_fk = :id";
+                    List<String> jmRows = entityManager.createNativeQuery(jmSql).setParameter("id", recordId).getResultList();
+                    jointMemberNames.addAll(jmRows);
+                }
+            } catch (Exception e) {
+                log.warn("Error resolving lead metadata for notification: {}", e.getMessage());
+            }
+        }
+
+        // Dynamically resolve notification recipients
+        Set<Long> recipientUserIds = new HashSet<>();
+
+        // 1. Company Administrator
+        Long companyAdminId = authUtil.getCompanyAdminId(currentUser);
+        if (companyAdminId != null) {
+            userRepository.findById(companyAdminId).ifPresent(u -> recipientUserIds.add(u.getUserid()));
+            userRepository.findByGroupId(companyAdminId).stream()
+                    .filter(u -> authUtil.isAdmin(u.getRole()))
+                    .forEach(u -> recipientUserIds.add(u.getUserid()));
+        }
+
+        // 2. Relevant Team Lead (dynamically resolved from team membership)
+        if (assignedTeamId != null) {
+            teamRepository.findById(assignedTeamId).ifPresent(team -> {
+                if (team.getTeamLeadId() != null) {
+                    teamMemberRepository.findById(team.getTeamLeadId()).ifPresent(tm -> {
+                        if (tm.getTeamMemberEmail() != null && !tm.getTeamMemberEmail().isBlank()) {
+                            userRepository.findByUserEmail(tm.getTeamMemberEmail().trim().toLowerCase())
+                                    .ifPresent(u -> recipientUserIds.add(u.getUserid()));
+                        }
+                    });
+                    userRepository.findById(team.getTeamLeadId()).ifPresent(u -> recipientUserIds.add(u.getUserid()));
+                }
+            });
+        }
+
+        // 3. Deduplication rule: do not create duplicate notification to the requester themselves
+        recipientUserIds.remove(currentUser.getUserid());
+
+        String requestedAtStr = LocalDateTime.now().format(NOTIF_DATE_FMT);
+        String finalReason = (reason != null && !reason.isBlank()) ? reason : "Permanent deletion requested";
+        String jointMembersStr = jointMemberNames.isEmpty() ? "—" : String.join(", ", jointMemberNames);
+
+        String notifTitle = "Permanent Delete Request: " + recordName;
+        String notifMessage = String.format(
+                "Requested by: %s (%s) | %s: %s (ID: %d) | Team: %s | Primary Member: %s | Joint Members: %s | Reason: %s | Requested At: %s",
+                requesterName, currentUser.getUserEmail(), moduleKey.toUpperCase(), recordName, recordId,
+                teamName, primaryMemberName, jointMembersStr, finalReason, requestedAtStr
+        );
+
+        for (Long recipientId : recipientUserIds) {
+            try {
+                CalendarNotification notif = CalendarNotification.builder()
+                        .userIdFk(recipientId)
+                        .eventIdFk(recordId)
+                        .title(notifTitle)
+                        .message(notifMessage)
+                        .scheduledAt(LocalDateTime.now())
+                        .sentAt(LocalDateTime.now())
+                        .status("PENDING")
+                        .channel("IN_APP")
+                        .build();
+                calendarNotificationRepository.save(notif);
+                log.info("Permanent delete notification sent to user ID {}: {}", recipientId, notifTitle);
+            } catch (Exception e) {
+                log.error("Failed to save notification for user ID {}: {}", recipientId, e.getMessage());
+            }
+        }
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("requestedBy", requesterName);
+        result.put("requesterEmail", currentUser.getUserEmail());
+        result.put("module", moduleKey);
+        result.put("recordId", recordId);
+        result.put("recordName", recordName);
+        result.put("teamName", teamName);
+        result.put("primaryMember", primaryMemberName);
+        result.put("jointMembers", jointMembersStr);
+        result.put("reason", finalReason);
+        result.put("requestedAt", requestedAtStr);
+        result.put("notificationsSentCount", recipientUserIds.size());
+        result.put("recipientUserIds", recipientUserIds);
+
+        return result;
+    }
+
+    @Transactional
+    public Map<String, Object> deletePermanently(String moduleKey, Long recordId, User currentUser) {
+        boolean isCompanyAdmin = authUtil.isAdmin(currentUser.getRole()) || authUtil.isSuperAdmin(currentUser.getRole());
+
+        if (isCompanyAdmin) {
+            String tableName = getTableName(moduleKey);
+            String idCol = getIdColumn(moduleKey);
+
+            String sql = "DELETE FROM " + tableName + " WHERE " + idCol + " = :id";
+            entityManager.createNativeQuery(sql)
+                    .setParameter("id", recordId)
+                    .executeUpdate();
+
+            log.info("Administrator {} ({}) permanently deleted {} record ID {}", 
+                    currentUser.getUsername(), currentUser.getUserEmail(), moduleKey, recordId);
+            
+            Map<String, Object> res = new HashMap<>();
+            res.put("isDeleted", true);
+            res.put("recordId", recordId);
+            res.put("module", moduleKey);
+            return res;
+        }
+
+        // Non-admin user: route directly to request workflow
+        log.info("Non-admin user {} ({}) requested permanent deletion for {} ID {}. Routing to notification workflow.",
+                currentUser.getUsername(), currentUser.getUserEmail(), moduleKey, recordId);
+        Map<String, Object> reqResult = requestPermanentDelete(moduleKey, recordId, "Permanent deletion requested via Delete Permanently action", currentUser);
+        reqResult.put("isDeleted", false);
+        return reqResult;
     }
 
     private String getTableName(String moduleKey) {
