@@ -29,7 +29,7 @@ public interface LeadRepository extends JpaRepository<Lead, Long>, JpaSpecificat
     @Query("SELECT DISTINCT l FROM Lead l WHERE l.leadAssignedTeam IN :teamIds AND (l.isDeleted = false OR l.isDeleted IS NULL) ORDER BY l.leadId DESC")
     List<Lead> findByTeamDataCriteria(@Param("teamIds") List<Long> teamIds);
 
-    @Query("SELECT DISTINCT l FROM Lead l WHERE (l.userIdFk IN :userIds OR l.leadAssignedMember IN :userIds OR l.leadAssignedTeam IN :teamIds OR LOWER(l.createdBy) IN :emails OR LOWER(l.updatedBy) IN :emails) AND (l.isDeleted = false OR l.isDeleted IS NULL) ORDER BY l.leadId DESC")
+    @Query("SELECT DISTINCT l FROM Lead l WHERE (l.userIdFk IN :userIds OR l.leadAssignedMember IN :userIds OR l.leadAssignedTeam IN :teamIds OR LOWER(l.createdBy) IN :emails) AND (l.isDeleted = false OR l.isDeleted IS NULL) ORDER BY l.leadId DESC")
     List<Lead> findByTeamLeadCriteria(@Param("userIds") List<Long> userIds, @Param("teamIds") List<Long> teamIds, @Param("emails") List<String> emails);
 
     @Query("SELECT l FROM Lead l WHERE (l.userIdFk IN :userIds OR l.leadAssignedMember IN :userIds) AND l.leadStatus = :status AND (l.isDeleted = false OR l.isDeleted IS NULL) ORDER BY l.leadId DESC")
