@@ -70,31 +70,31 @@ public interface LeadRepository extends JpaRepository<Lead, Long>, JpaSpecificat
     Optional<Lead> findByUniqueQueryId(String uniqueQueryId);
 
     boolean existsByUniqueQueryId(String uniqueQueryId);
-    long countByLeadStatus(String leadStatus);
-    long countByUserIdFk(Long userIdFk);    
+    @Query("SELECT COUNT(l) FROM Lead l WHERE (l.isDeleted = false OR l.isDeleted IS NULL)")
+    long countActiveLeads();
 
-    @Query("SELECT COUNT(l) FROM Lead l WHERE (l.userIdFk IN :userIds OR l.leadAssignedMember IN :userIds)")
+    @Query("SELECT COUNT(l) FROM Lead l WHERE (l.userIdFk IN :userIds OR l.leadAssignedMember IN :userIds) AND (l.isDeleted = false OR l.isDeleted IS NULL)")
     long countByUserIdFkIn(@Param("userIds") List<Long> userIds);
 
-    @Query("SELECT COALESCE(NULLIF(l.leadOutcomeStatus, ''), NULLIF(l.leadStatus, ''), 'Open') AS status, COUNT(l) AS count FROM Lead l GROUP BY COALESCE(NULLIF(l.leadOutcomeStatus, ''), NULLIF(l.leadStatus, ''), 'Open')")
+    @Query("SELECT COALESCE(NULLIF(l.leadOutcomeStatus, ''), NULLIF(l.leadStatus, ''), 'Open') AS status, COUNT(l) AS count FROM Lead l WHERE (l.isDeleted = false OR l.isDeleted IS NULL) GROUP BY COALESCE(NULLIF(l.leadOutcomeStatus, ''), NULLIF(l.leadStatus, ''), 'Open')")
     List<Object[]> countGroupByStatus();
 
-    @Query("SELECT l.leadSource AS source, COUNT(l) AS count FROM Lead l GROUP BY l.leadSource")
+    @Query("SELECT l.leadSource AS source, COUNT(l) AS count FROM Lead l WHERE (l.isDeleted = false OR l.isDeleted IS NULL) GROUP BY l.leadSource")
     List<Object[]> countGroupBySource();
 
-    @Query("SELECT COALESCE(NULLIF(l.leadOutcomeStatus, ''), NULLIF(l.leadStatus, ''), 'Open') AS status, COUNT(l) AS count FROM Lead l WHERE l.userIdFk = :userId GROUP BY COALESCE(NULLIF(l.leadOutcomeStatus, ''), NULLIF(l.leadStatus, ''), 'Open')")
+    @Query("SELECT COALESCE(NULLIF(l.leadOutcomeStatus, ''), NULLIF(l.leadStatus, ''), 'Open') AS status, COUNT(l) AS count FROM Lead l WHERE l.userIdFk = :userId AND (l.isDeleted = false OR l.isDeleted IS NULL) GROUP BY COALESCE(NULLIF(l.leadOutcomeStatus, ''), NULLIF(l.leadStatus, ''), 'Open')")
     List<Object[]> countGroupByStatusForUser(@Param("userId") Long userId);
 
-    @Query("SELECT l.leadSource AS source, COUNT(l) AS count FROM Lead l WHERE l.userIdFk = :userId GROUP BY l.leadSource")
+    @Query("SELECT l.leadSource AS source, COUNT(l) AS count FROM Lead l WHERE l.userIdFk = :userId AND (l.isDeleted = false OR l.isDeleted IS NULL) GROUP BY l.leadSource")
     List<Object[]> countGroupBySourceForUser(@Param("userId") Long userId);
 
-    @Query("SELECT COALESCE(NULLIF(l.leadOutcomeStatus, ''), NULLIF(l.leadStatus, ''), 'Open') AS status, COUNT(l) AS count FROM Lead l WHERE (l.userIdFk IN :userIds OR l.leadAssignedMember IN :userIds) GROUP BY COALESCE(NULLIF(l.leadOutcomeStatus, ''), NULLIF(l.leadStatus, ''), 'Open')")
+    @Query("SELECT COALESCE(NULLIF(l.leadOutcomeStatus, ''), NULLIF(l.leadStatus, ''), 'Open') AS status, COUNT(l) AS count FROM Lead l WHERE (l.userIdFk IN :userIds OR l.leadAssignedMember IN :userIds) AND (l.isDeleted = false OR l.isDeleted IS NULL) GROUP BY COALESCE(NULLIF(l.leadOutcomeStatus, ''), NULLIF(l.leadStatus, ''), 'Open')")
     List<Object[]> countGroupByStatusForUserIds(@Param("userIds") List<Long> userIds);
 
-    @Query("SELECT l.leadSource AS source, COUNT(l) AS count FROM Lead l WHERE (l.userIdFk IN :userIds OR l.leadAssignedMember IN :userIds) GROUP BY l.leadSource")
+    @Query("SELECT l.leadSource AS source, COUNT(l) AS count FROM Lead l WHERE (l.userIdFk IN :userIds OR l.leadAssignedMember IN :userIds) AND (l.isDeleted = false OR l.isDeleted IS NULL) GROUP BY l.leadSource")
     List<Object[]> countGroupBySourceForUserIds(@Param("userIds") List<Long> userIds);
 
-    @Query("SELECT l FROM Lead l WHERE l.leadCreatedDate BETWEEN :fromDate AND :toDate")
+    @Query("SELECT l FROM Lead l WHERE l.leadCreatedDate BETWEEN :fromDate AND :toDate AND (l.isDeleted = false OR l.isDeleted IS NULL)")
     List<Lead> findByLeadCreatedDateBetween(@Param("fromDate") java.time.LocalDateTime fromDate, @Param("toDate") java.time.LocalDateTime toDate);
 
 }

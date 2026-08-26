@@ -34,7 +34,7 @@ public class DashboardService {
             oppStatusMap  = buildStatusMap(opportunityRepository.countGroupByStatus());
             projStatusMap = buildStatusMap(projectRepository.countGroupByStatus());
             leadSourceMap = buildStatusMap(leadRepository.countGroupBySource());
-            leadAllCount = leadRepository.count();
+            leadAllCount = leadRepository.countActiveLeads();
             projectCount = projectRepository.count();
         } else {
             List<Long> companyUserIds = leadService.getCompanyUserIds(user.getUserid(), user.getRole());
