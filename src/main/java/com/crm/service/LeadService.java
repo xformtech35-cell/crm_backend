@@ -296,6 +296,7 @@ public class LeadService {
         List<Lead> leads;
         User user = userRepository.findById(userId).orElse(null);
         String scopeMode = authUtil.resolveDataScopeMode(user, "LEADS");
+        Long companyAdminId = authUtil.getCompanyAdminId(user);
 
         Long selectedTmId = authUtil.getSelectedTeamMemberId();
         if (selectedTmId != null && !authUtil.isSuperAdmin(role)) {
@@ -308,38 +309,62 @@ public class LeadService {
             }
             if (tmOpt.isPresent()) {
                 TeamMember tm = tmOpt.get();
-                List<Long> targetUserIds = new ArrayList<>();
-                if (tm.getTeamMemberId() != null) targetUserIds.add(tm.getTeamMemberId());
-                if (userRepository.findByUserEmail(tm.getTeamMemberEmail()).isPresent()) {
-                    targetUserIds.add(userRepository.findByUserEmail(tm.getTeamMemberEmail()).get().getUserid());
-                }
+                boolean isContextAuthorized = false;
 
-                List<Long> targetTeamIds = new ArrayList<>();
-                if (tm.getTeamIdFk() != null) targetTeamIds.add(tm.getTeamIdFk());
-                List<CreateTeam> cts = createTeamRepository.findByTeamMemberIdFk(tm.getTeamMemberId());
-                for (CreateTeam ct : cts) {
-                    if (ct.getTeamIdFk() != null && !targetTeamIds.contains(ct.getTeamIdFk())) {
-                        targetTeamIds.add(ct.getTeamIdFk());
+                if ("ALL_DATA".equals(scopeMode)) {
+                    // Admin can view any member within their company
+                    if (tm.getUserIdFk() != null && tm.getUserIdFk().equals(companyAdminId)) {
+                        isContextAuthorized = true;
+                    }
+                } else if ("TEAM_DATA".equals(scopeMode)) {
+                    // Team Lead can ONLY view context for teams they lead
+                    List<Long> ledTeamIds = authUtil.getTeamLeadTeamIds(user);
+                    if (tm.getTeamIdFk() != null && ledTeamIds.contains(tm.getTeamIdFk())) {
+                        isContextAuthorized = true;
+                    } else {
+                        List<CreateTeam> cts = createTeamRepository.findByTeamMemberIdFk(tm.getTeamMemberId());
+                        for (CreateTeam ct : cts) {
+                            if (ct.getTeamIdFk() != null && ledTeamIds.contains(ct.getTeamIdFk())) {
+                                isContextAuthorized = true;
+                                break;
+                            }
+                        }
+                    }
+                } else {
+                    // OWN_DATA_ONLY: A Sales Exec can ONLY view their own context
+                    Optional<TeamMember> userTmOpt = teamMemberRepository.findByTeamMemberEmail(user != null ? user.getUserEmail() : "");
+                    if (userTmOpt.isPresent() && userTmOpt.get().getTeamMemberId().equals(tm.getTeamMemberId())) {
+                        isContextAuthorized = true;
                     }
                 }
 
-                List<String> targetEmails = new ArrayList<>();
-                if (tm.getTeamMemberEmail() != null && !tm.getTeamMemberEmail().isBlank()) {
-                    targetEmails.add(tm.getTeamMemberEmail().toLowerCase());
+                if (isContextAuthorized) {
+                    List<Long> targetUserIds = new ArrayList<>();
+                    if (tm.getTeamMemberId() != null) targetUserIds.add(tm.getTeamMemberId());
+                    if (userRepository.findByUserEmail(tm.getTeamMemberEmail()).isPresent()) {
+                        targetUserIds.add(userRepository.findByUserEmail(tm.getTeamMemberEmail()).get().getUserid());
+                    }
+
+                    List<Long> targetTeamIds = new ArrayList<>();
+                    if (tm.getTeamIdFk() != null) targetTeamIds.add(tm.getTeamIdFk());
+                    List<CreateTeam> cts = createTeamRepository.findByTeamMemberIdFk(tm.getTeamMemberId());
+                    for (CreateTeam ct : cts) {
+                        if (ct.getTeamIdFk() != null && !targetTeamIds.contains(ct.getTeamIdFk())) {
+                            targetTeamIds.add(ct.getTeamIdFk());
+                        }
+                    }
+
+                    if (targetUserIds.isEmpty()) targetUserIds = List.of(-1L);
+                    if (targetTeamIds.isEmpty()) targetTeamIds = List.of(-1L);
+
+                    leads = leadRepository.findByTeamLeadCriteria(targetUserIds, targetTeamIds);
+                    populateCreatorInfoIfMissing(leads);
+                    populateAssignedMembers(leads);
+                    return leads;
                 }
-
-                if (targetUserIds.isEmpty()) targetUserIds = List.of(-1L);
-                if (targetTeamIds.isEmpty()) targetTeamIds = List.of(-1L);
-                if (targetEmails.isEmpty()) targetEmails = List.of("__NONE__");
-
-                leads = leadRepository.findByTeamLeadCriteria(targetUserIds, targetTeamIds, targetEmails);
-                populateCreatorInfoIfMissing(leads);
-                return leads;
+                // If unauthorized context requested, safely ignore and fallback to authorized scope below
             }
         }
-
-        Long companyAdminId = authUtil.getCompanyAdminId(user);
-        boolean isCompanyAdminUser = user != null && user.getUserid() != null && user.getUserid().equals(companyAdminId);
 
         if (authUtil.isSuperAdmin(role)) {
             leads = leadRepository.findAll(Sort.by(Sort.Direction.DESC, "leadId"));
@@ -354,9 +379,8 @@ public class LeadService {
             // OWN_DATA_ONLY
             Optional<TeamMember> tmOpt = teamMemberRepository.findByTeamMemberEmail(user != null ? user.getUserEmail() : "");
             Long teamMemberId = tmOpt.map(TeamMember::getTeamMemberId).orElse(null);
-            String userEmail = user != null ? user.getUserEmail() : null;
 
-            leads = leadRepository.findByOwnDataCriteria(userId, teamMemberId, userEmail);
+            leads = leadRepository.findByOwnDataCriteria(userId, teamMemberId);
         }
 
         populateCreatorInfoIfMissing(leads);
@@ -373,13 +397,11 @@ public class LeadService {
     }
 
     public Lead getLeadById(Long id, User currentUser) {
+        if (currentUser == null) {
+            throw new org.springframework.security.access.AccessDeniedException("Access denied: Authentication required");
+        }
         Lead lead = leadRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Lead", "id", id));
-        if (currentUser == null) {
-            populateCreatorInfoIfMissing(List.of(lead));
-            populateAssignedMembers(List.of(lead));
-            return lead;
-        }
         String scopeMode = authUtil.resolveDataScopeMode(currentUser, "LEADS");
         if (authUtil.isSuperAdmin(currentUser.getRole()) || "ALL_DATA".equals(scopeMode)) {
             Long companyAdminId = authUtil.getCompanyAdminId(currentUser);
@@ -403,9 +425,8 @@ public class LeadService {
         Optional<TeamMember> tmOpt = teamMemberRepository.findByTeamMemberEmail(currentUser.getUserEmail());
         Long tmId = tmOpt.map(TeamMember::getTeamMemberId).orElse(null);
         boolean isDirectAssigned = tmId != null && tmId.equals(lead.getLeadAssignedMember());
-        boolean isCreator = currentUser.getUserid() != null && currentUser.getUserid().equals(lead.getUserIdFk());
         boolean isJointAssigned = tmId != null && leadMemberRepository.findByLeadIdFkAndTeamMemberIdFk(id, tmId).isPresent();
-        if (!isDirectAssigned && !isCreator && !isJointAssigned) {
+        if (!isDirectAssigned && !isJointAssigned) {
             throw new org.springframework.security.access.AccessDeniedException("Access denied: You can only view your own assigned leads");
         }
         populateCreatorInfoIfMissing(List.of(lead));
@@ -1120,10 +1141,8 @@ public class LeadService {
             User user = userRepository.findById(userId).orElse(null);
             Optional<TeamMember> tmOpt = teamMemberRepository.findByTeamMemberEmail(user != null ? user.getUserEmail() : "");
             Long teamMemberId = tmOpt.map(TeamMember::getTeamMemberId).orElse(null);
-            String teamMemberName = tmOpt.map(TeamMember::getTeamMemberName).orElse(null);
-            String userEmail = user != null ? user.getUserEmail() : null;
 
-            leads = leadRepository.findByOwnDataCriteriaAndStatus(userId, teamMemberId, userEmail, status);
+            leads = leadRepository.findByOwnDataCriteriaAndStatus(userId, teamMemberId, status);
         }
 
         populateCreatorInfoIfMissing(leads);
@@ -1139,8 +1158,19 @@ public class LeadService {
         return leadNoteRepository.findByLeadIdFkOrderByNoteDateDesc(leadId);
     }
 
-    public List<LeadNote> getAllNotes() {
-        return leadNoteRepository.findAllByOrderByNoteDateDesc();
+    public List<LeadNote> getAllNotes(Long userId, String role) {
+        List<Lead> authorizedLeads = getAllLeads(userId, role);
+        if (authorizedLeads == null || authorizedLeads.isEmpty()) {
+            return java.util.Collections.emptyList();
+        }
+        List<Long> leadIds = authorizedLeads.stream()
+                .map(Lead::getLeadId)
+                .filter(java.util.Objects::nonNull)
+                .collect(java.util.stream.Collectors.toList());
+        if (leadIds.isEmpty()) {
+            return java.util.Collections.emptyList();
+        }
+        return leadNoteRepository.findByLeadIdFkInOrderByNoteDateDesc(leadIds);
     }
 
     public LeadNote addNote(Long leadId, String noteText, Long userId) {

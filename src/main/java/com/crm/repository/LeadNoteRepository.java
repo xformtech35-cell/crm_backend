@@ -10,6 +10,8 @@ import java.util.List;
 public interface LeadNoteRepository extends JpaRepository<LeadNote, Long> {
     List<LeadNote> findByLeadIdFkOrderByNoteDateDesc(Long leadIdFk);
 
+    List<LeadNote> findByLeadIdFkInOrderByNoteDateDesc(List<Long> leadIdFks);
+
     List<LeadNote> findAllByOrderByNoteDateDesc();
 
     long countByLeadIdFk(Long leadIdFk);

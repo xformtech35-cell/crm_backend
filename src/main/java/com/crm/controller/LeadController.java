@@ -28,6 +28,7 @@ import lombok.RequiredArgsConstructor;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -67,6 +68,7 @@ public class LeadController {
         return ResponseEntity.ok(response);
     }
 
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
     @GetMapping("/seed-dummy-marketplace")
     public ResponseEntity<Map<String, Object>> seedDummyMarketplaceLeads() {
         Map<String, Object> res = new HashMap<>();
@@ -210,6 +212,7 @@ public class LeadController {
         }
     }
 
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
     @GetMapping("/bulk/assign-dummy-marketplace")
     public ResponseEntity<Map<String, Object>> assignDummyMarketplaceLeads() {
         Map<String, Object> res = new HashMap<>();
@@ -252,8 +255,9 @@ public class LeadController {
     }
 
     @GetMapping("/{id}/lead-outcome-status")
-    public ResponseEntity<ApiResponse<Lead>> getLeadWithOutcomeStatus(@PathVariable Long id) {
-        Lead lead = leadService.getLeadById(id);
+    public ResponseEntity<ApiResponse<Lead>> getLeadWithOutcomeStatus(@PathVariable Long id, Authentication auth) {
+        User user = auth != null ? authUtil.getCurrentUser(auth) : null;
+        Lead lead = leadService.getLeadById(id, user);
         return ResponseEntity.ok(ApiResponse.success("Lead fetched", lead));
     }
 
@@ -358,13 +362,16 @@ public class LeadController {
 
 
     @GetMapping("/{id}/notes")
-    public ResponseEntity<ApiResponse<List<LeadNote>>> getNotes(@PathVariable Long id) {
+    public ResponseEntity<ApiResponse<List<LeadNote>>> getNotes(@PathVariable Long id, Authentication auth) {
+        User user = auth != null ? authUtil.getCurrentUser(auth) : null;
+        leadService.getLeadById(id, user);
         return ResponseEntity.ok(ApiResponse.success("Notes fetched", leadService.getNotes(id)));
     }
 
     @GetMapping("/notes/all")
-    public ResponseEntity<ApiResponse<List<LeadNote>>> getAllNotes() {
-        return ResponseEntity.ok(ApiResponse.success("All notes fetched", leadService.getAllNotes()));
+    public ResponseEntity<ApiResponse<List<LeadNote>>> getAllNotes(Authentication auth) {
+        User user = authUtil.getCurrentUser(auth);
+        return ResponseEntity.ok(ApiResponse.success("All notes fetched", leadService.getAllNotes(user.getUserid(), user.getRole())));
     }
 
     @PostMapping("/{id}/notes")
@@ -376,7 +383,9 @@ public class LeadController {
     }
 
     @GetMapping("/{id}/reminders")
-    public ResponseEntity<ApiResponse<List<LeadReminder>>> getReminders(@PathVariable Long id) {
+    public ResponseEntity<ApiResponse<List<LeadReminder>>> getReminders(@PathVariable Long id, Authentication auth) {
+        User user = auth != null ? authUtil.getCurrentUser(auth) : null;
+        leadService.getLeadById(id, user);
         return ResponseEntity.ok(ApiResponse.success("Reminders fetched", leadService.getReminders(id)));
     }
 
@@ -428,9 +437,10 @@ public class LeadController {
      * GET /api/leads/{id}/leadRating
      */
     @GetMapping("/{id}/leadRating")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> getLeadRating(@PathVariable Long id) {
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getLeadRating(@PathVariable Long id, Authentication auth) {
         try {
-            Lead lead = leadService.getLeadById(id);
+            User user = auth != null ? authUtil.getCurrentUser(auth) : null;
+            Lead lead = leadService.getLeadById(id, user);
             if (lead == null) {
                 return ResponseEntity.status(HttpStatus.NOT_FOUND)
                         .body(ApiResponse.error("Lead not found with id: " + id));
@@ -442,6 +452,12 @@ public class LeadController {
             response.put("lead", lead);
 
             return ResponseEntity.ok(ApiResponse.success("Lead rating fetched", response));
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(ApiResponse.error(e.getMessage()));
+        } catch (com.crm.exception.ResourceNotFoundException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(ApiResponse.error(e.getMessage()));
         } catch (Exception e) {
             e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
