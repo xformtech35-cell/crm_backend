@@ -16,6 +16,8 @@ public interface NegotiationRevisionRepository
 
     List<NegotiationRevision> findByNegotiationIdOrderByUpdatedDateDesc(Long negotiationId);
     
+    List<NegotiationRevision> findByLeadIdFkOrderByUpdatedDateDesc(Long leadIdFk);
+    
     List<NegotiationRevision> findByNegotiationIdOrLeadIdFkOrderByUpdatedDateDesc(Long negotiationId, Long leadIdFk);
     
     List<NegotiationRevision> findByQuotationNo(String quotationNo);

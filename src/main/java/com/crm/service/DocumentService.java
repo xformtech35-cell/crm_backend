@@ -69,6 +69,7 @@ public class DocumentService {
                 }
             }
 
+            String finalRev = "R0";
             if (lead != null) {
                 if (lead.getQuotationNumber() == null || !lead.getQuotationNumber().equals(quotationNo)) {
                     lead.setQuotationNumber(quotationNo);
@@ -95,7 +96,7 @@ public class DocumentService {
                     revCode = quotationNo.substring(quotationNo.lastIndexOf('/') + 1).toUpperCase();
                 }
 
-                final String finalRev = revCode;
+                finalRev = revCode;
                 if (negotiationRevision == null) {
                     negotiationRevision = negotiationRevisionRepository
                             .findFirstByNegotiationIdAndQuotationRevision(negotiation.getId(), finalRev)

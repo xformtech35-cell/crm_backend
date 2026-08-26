@@ -662,8 +662,8 @@ public ResponseEntity<ApiResponse<Lead>> getDetails(@PathVariable Long id) {
                 map.put("documentCount", docList.size());
             } else {
                 List<Map<String, Object>> docList = new ArrayList<>();
-                boolean isR0 = "R0".equalsIgnoreCase(revCode);
-                if (isR0 && negotiation.getLeadIdFk() != null) {
+                boolean isR0Fallback = "R0".equalsIgnoreCase(revCode);
+                if (isR0Fallback && negotiation.getLeadIdFk() != null) {
                     Optional<Lead> leadOptDoc = leadRepository.findById(negotiation.getLeadIdFk());
                     if (leadOptDoc.isPresent()) {
                         Lead lead = leadOptDoc.get();

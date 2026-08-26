@@ -249,7 +249,8 @@ public class AuthService {
 
         // 2. Role permission fallback for Company Admin
         if (authUtil.isAdmin(roleField)) {
-            Optional<Role> companyAdminRole = roleRepository.findByUserIdFk(user.getUserid())
+            Long companyAdminId = authUtil.getCompanyAdminId(user);
+            Optional<Role> companyAdminRole = roleRepository.findByUserIdFk(companyAdminId != null ? companyAdminId : user.getUserid())
                     .stream()
                     .filter(r -> "ADMIN".equalsIgnoreCase(r.getRoleName()))
                     .findFirst();
