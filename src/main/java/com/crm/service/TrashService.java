@@ -2,22 +2,30 @@ package com.crm.service;
 
 import com.crm.dto.response.TrashItemResponse;
 import com.crm.entity.Role;
+import com.crm.entity.Team;
+import com.crm.entity.TeamMember;
 import com.crm.entity.User;
 import com.crm.repository.PermissionRepository;
 import com.crm.repository.RoleRepository;
+import com.crm.repository.TeamMemberRepository;
+import com.crm.repository.UserRepository;
 import com.crm.util.AuthUtil;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class TrashService {
@@ -26,6 +34,8 @@ public class TrashService {
     private final EntityManager entityManager;
     private final PermissionRepository permissionRepository;
     private final RoleRepository roleRepository;
+    private final UserRepository userRepository;
+    private final TeamMemberRepository teamMemberRepository;
     private final AuthUtil authUtil;
 
     private boolean userHasPermission(User user, String permissionKey) {
@@ -33,8 +43,9 @@ public class TrashService {
         if (authUtil.isSuperAdmin(user.getRole())) {
             return true;
         }
+        Long companyAdminId = authUtil.getCompanyAdminId(user);
         if (authUtil.isAdmin(user.getRole())) {
-            Optional<Role> companyAdminRole = roleRepository.findByUserIdFk(user.getUserid())
+            Optional<Role> companyAdminRole = roleRepository.findByUserIdFk(companyAdminId != null ? companyAdminId : user.getUserid())
                     .stream()
                     .filter(r -> "ADMIN".equalsIgnoreCase(r.getRoleName()))
                     .findFirst();
@@ -42,15 +53,36 @@ public class TrashService {
             if (companyAdminRole.isPresent()) {
                 return permissionRepository.existsByRoleIdFkAndGrpPerm(companyAdminRole.get().getRoleId(), permissionKey);
             }
-            return false;
+            return true; // default admin allows
         }
-        if (user.getRole() == null) return false;
-        try {
-            Long roleId = Long.parseLong(user.getRole());
-            return permissionRepository.existsByRoleIdFkAndGrpPerm(roleId, permissionKey);
-        } catch (Exception e) {
-            return false;
+
+        // For non-admin, look up role
+        String roleStr = user.getRole();
+        if (roleStr != null) {
+            try {
+                Long roleId = Long.parseLong(roleStr);
+                if (permissionRepository.existsByRoleIdFkAndGrpPerm(roleId, permissionKey)) {
+                    return true;
+                }
+            } catch (NumberFormatException ignored) {
+                List<Role> roles = companyAdminId != null ? roleRepository.findByUserIdFk(companyAdminId) : roleRepository.findAll();
+                for (Role r : roles) {
+                    if (r.getRoleName() != null && (r.getRoleName().equalsIgnoreCase(roleStr) || 
+                        r.getRoleName().replace(" ", "_").equalsIgnoreCase(roleStr))) {
+                        if (permissionRepository.existsByRoleIdFkAndGrpPerm(r.getRoleId(), permissionKey)) {
+                            return true;
+                        }
+                    }
+                }
+            }
         }
+
+        // Default allow view and restore for logged in users on their own data
+        if ("trash.view".equals(permissionKey) || "trash.restore".equals(permissionKey)) {
+            return true;
+        }
+
+        return false;
     }
 
     @Transactional(readOnly = true)
@@ -60,6 +92,16 @@ public class TrashService {
         }
 
         Long companyAdminId = authUtil.getCompanyAdminId(currentUser);
+        String scopeMode = authUtil.resolveDataScopeMode(currentUser, "TRASH");
+        
+        List<Long> ledTeamIds = authUtil.getTeamLeadTeamIds(currentUser);
+        List<Long> ledMemberIds = authUtil.getTeamLeadMemberUserIds(currentUser);
+        List<Long> ledUserIds = ledMemberIds;
+        
+        Long myMemberId = teamMemberRepository.findByTeamMemberEmail(currentUser.getUserEmail())
+                .map(TeamMember::getTeamMemberId)
+                .orElse(null);
+
         List<TrashItemResponse> items = new ArrayList<>();
 
         // 1. Leads
@@ -74,7 +116,14 @@ public class TrashService {
                 "COALESCE(NULLIF(TRIM(lead_title), ''), NULLIF(TRIM(lead_ref), ''), NULLIF(TRIM(company_contact_person_name), ''))",
                 "Lead",
                 "leads",
-                companyAdminId);
+                currentUser,
+                scopeMode,
+                companyAdminId,
+                ledTeamIds,
+                ledMemberIds,
+                ledUserIds,
+                myMemberId,
+                true);
 
         // 2. Contacts
         fetchModuleTrash(items,
@@ -88,7 +137,14 @@ public class TrashService {
                 "COALESCE(NULLIF(TRIM(contact_city), ''), NULLIF(TRIM(contact_address), ''))",
                 "Contact",
                 "contacts",
-                companyAdminId);
+                currentUser,
+                scopeMode,
+                companyAdminId,
+                ledTeamIds,
+                ledMemberIds,
+                ledUserIds,
+                myMemberId,
+                false);
 
         // 3. Opportunities
         fetchModuleTrash(items,
@@ -102,7 +158,14 @@ public class TrashService {
                 "CONCAT('Value: ₹', COALESCE(CAST(opp_amount AS CHAR), '0'))",
                 "Opportunity",
                 "opportunities",
-                companyAdminId);
+                currentUser,
+                scopeMode,
+                companyAdminId,
+                ledTeamIds,
+                ledMemberIds,
+                ledUserIds,
+                myMemberId,
+                false);
 
         // 4. Organizations
         fetchModuleTrash(items,
@@ -116,7 +179,14 @@ public class TrashService {
                 "COALESCE(NULLIF(TRIM(organization_city), ''), NULLIF(TRIM(organization_address), ''))",
                 "Organization",
                 "organizations",
-                companyAdminId);
+                currentUser,
+                scopeMode,
+                companyAdminId,
+                ledTeamIds,
+                ledMemberIds,
+                ledUserIds,
+                myMemberId,
+                false);
 
         // 5. Projects
         fetchModuleTrash(items,
@@ -130,7 +200,14 @@ public class TrashService {
                 "NULLIF(TRIM(project_code), '')",
                 "Project",
                 "projects",
-                companyAdminId);
+                currentUser,
+                scopeMode,
+                companyAdminId,
+                ledTeamIds,
+                ledMemberIds,
+                ledUserIds,
+                myMemberId,
+                false);
 
         // 6. Tasks
         fetchModuleTrash(items,
@@ -144,23 +221,16 @@ public class TrashService {
                 "COALESCE(NULLIF(TRIM(task_related_to), ''), NULLIF(TRIM(task_due_date), ''))",
                 "Task",
                 "tasks",
-                companyAdminId);
+                currentUser,
+                scopeMode,
+                companyAdminId,
+                ledTeamIds,
+                ledMemberIds,
+                ledUserIds,
+                myMemberId,
+                false);
 
-        // 7. Documents
-        fetchModuleTrash(items,
-                "crm_documents",
-                "id",
-                "COALESCE(NULLIF(TRIM(file_name), ''), NULLIF(TRIM(quotation_no), ''), CONCAT('Document #', id))",
-                "NULL",
-                "NULL",
-                "NULL",
-                "file_type",
-                "CONCAT(COALESCE(quotation_no, ''), ' | Size: ', COALESCE(CAST(file_size AS CHAR), '0'), ' B')",
-                "Document",
-                "documents",
-                null);
-
-        // 8. Negotiations
+        // 7. Negotiations
         fetchModuleTrash(items,
                 "crm_negotiation",
                 "id",
@@ -172,9 +242,16 @@ public class TrashService {
                 "CONCAT('Qtn: ', COALESCE(quotation_no, ''), ' (₹', COALESCE(CAST(quotation_amount AS CHAR), '0'), ')')",
                 "Negotiation",
                 "negotiations",
-                companyAdminId);
+                currentUser,
+                scopeMode,
+                companyAdminId,
+                ledTeamIds,
+                ledMemberIds,
+                ledUserIds,
+                myMemberId,
+                false);
 
-        // 9. Calendar Events
+        // 8. Calendar Events
         fetchModuleTrash(items,
                 "crm_calendar_events",
                 "id",
@@ -186,29 +263,104 @@ public class TrashService {
                 "CONCAT(COALESCE(event_type, ''), ' | Priority: ', COALESCE(priority, ''))",
                 "Calendar Event",
                 "events",
-                companyAdminId);
+                currentUser,
+                scopeMode,
+                companyAdminId,
+                ledTeamIds,
+                ledMemberIds,
+                ledUserIds,
+                myMemberId,
+                false);
 
         return items;
     }
 
     @SuppressWarnings("unchecked")
-    private void fetchModuleTrash(List<TrashItemResponse> list, String tableName, String idCol, String nameExpr, String emailExpr, String phoneExpr, String orgExpr, String statusExpr, String detailsExpr, String itemType, String moduleKey, Long companyAdminId) {
+    private void fetchModuleTrash(List<TrashItemResponse> list,
+                                  String tableName,
+                                  String idCol,
+                                  String nameExpr,
+                                  String emailExpr,
+                                  String phoneExpr,
+                                  String orgExpr,
+                                  String statusExpr,
+                                  String detailsExpr,
+                                  String itemType,
+                                  String moduleKey,
+                                  User currentUser,
+                                  String scopeMode,
+                                  Long companyAdminId,
+                                  List<Long> ledTeamIds,
+                                  List<Long> ledMemberIds,
+                                  List<Long> ledUserIds,
+                                  Long myMemberId,
+                                  boolean isLeadTable) {
         try {
-            String sql = "SELECT " + idCol + ", " 
-                    + nameExpr + " AS item_name, " 
-                    + emailExpr + " AS item_email, " 
-                    + phoneExpr + " AS item_phone, " 
-                    + orgExpr + " AS item_org, " 
-                    + statusExpr + " AS item_status, " 
-                    + detailsExpr + " AS item_details, " 
-                    + "deleted_at FROM " + tableName + " WHERE is_deleted = 1";
+            StringBuilder sql = new StringBuilder("SELECT ")
+                    .append(idCol).append(", ")
+                    .append(nameExpr).append(" AS item_name, ")
+                    .append(emailExpr).append(" AS item_email, ")
+                    .append(phoneExpr).append(" AS item_phone, ")
+                    .append(orgExpr).append(" AS item_org, ")
+                    .append(statusExpr).append(" AS item_status, ")
+                    .append(detailsExpr).append(" AS item_details, ")
+                    .append("deleted_at FROM ").append(tableName)
+                    .append(" WHERE is_deleted = 1");
 
-            if (companyAdminId != null) {
-                sql += " AND (user_id_fk = " + companyAdminId + " OR user_id_fk IS NULL)";
+            if ("ALL_DATA".equals(scopeMode) || authUtil.isAdmin(currentUser.getRole()) || authUtil.isSuperAdmin(currentUser.getRole())) {
+                if (companyAdminId != null && !authUtil.isSuperAdmin(currentUser.getRole())) {
+                    sql.append(" AND (user_id_fk = ").append(companyAdminId)
+                       .append(" OR user_id_fk IN (SELECT userid FROM crm_xformsales_user WHERE group_id = ").append(companyAdminId).append(")")
+                       .append(" OR user_id_fk IS NULL)");
+                }
+            } else if ("TEAM_DATA".equals(scopeMode) || authUtil.isTeamLead(currentUser.getRole())) {
+                if (isLeadTable) {
+                    List<String> conditions = new ArrayList<>();
+                    if (ledTeamIds != null && !ledTeamIds.isEmpty()) {
+                        conditions.add("lead_assigned_team IN (" + ledTeamIds.stream().map(String::valueOf).collect(Collectors.joining(",")) + ")");
+                    }
+                    if (ledMemberIds != null && !ledMemberIds.isEmpty()) {
+                        conditions.add("lead_assigned_member IN (" + ledMemberIds.stream().map(String::valueOf).collect(Collectors.joining(",")) + ")");
+                    }
+                    if (ledUserIds != null && !ledUserIds.isEmpty()) {
+                        conditions.add("user_id_fk IN (" + ledUserIds.stream().map(String::valueOf).collect(Collectors.joining(",")) + ")");
+                    }
+                    if (!conditions.isEmpty()) {
+                        sql.append(" AND (").append(String.join(" OR ", conditions)).append(")");
+                    } else {
+                        sql.append(" AND 1=0");
+                    }
+                } else {
+                    if (ledUserIds != null && !ledUserIds.isEmpty()) {
+                        sql.append(" AND user_id_fk IN (").append(ledUserIds.stream().map(String::valueOf).collect(Collectors.joining(","))).append(")");
+                    } else {
+                        sql.append(" AND 1=0");
+                    }
+                }
+            } else {
+                // OWN_DATA_ONLY
+                if (isLeadTable) {
+                    List<String> conditions = new ArrayList<>();
+                    if (myMemberId != null) {
+                        conditions.add("lead_assigned_member = " + myMemberId);
+                        conditions.add("lead_id IN (SELECT lead_id_fk FROM crm_xformsales_lead_member WHERE team_member_id_fk = " + myMemberId + ")");
+                    }
+                    if (currentUser.getUserid() != null) {
+                        conditions.add("user_id_fk = " + currentUser.getUserid());
+                    }
+                    if (!conditions.isEmpty()) {
+                        sql.append(" AND (").append(String.join(" OR ", conditions)).append(")");
+                    } else {
+                        sql.append(" AND 1=0");
+                    }
+                } else {
+                    sql.append(" AND user_id_fk = ").append(currentUser.getUserid());
+                }
             }
-            sql += " ORDER BY deleted_at DESC";
 
-            Query query = entityManager.createNativeQuery(sql);
+            sql.append(" ORDER BY deleted_at DESC");
+
+            Query query = entityManager.createNativeQuery(sql.toString());
             List<Object[]> rows = query.getResultList();
 
             for (Object[] row : rows) {
@@ -239,7 +391,7 @@ public class TrashService {
                         .build());
             }
         } catch (Exception e) {
-            System.err.println("Error fetching trash for table " + tableName + ": " + e.getMessage());
+            log.error("Error fetching trash for table {}: {}", tableName, e.getMessage());
         }
     }
 
@@ -256,12 +408,18 @@ public class TrashService {
         entityManager.createNativeQuery(sql)
                 .setParameter("id", recordId)
                 .executeUpdate();
+                
+        log.info("User {} ({}) restored {} record ID {}", currentUser.getUsername(), currentUser.getUserEmail(), moduleKey, recordId);
     }
 
     @Transactional
     public void deletePermanently(String moduleKey, Long recordId, User currentUser) {
-        if (!userHasPermission(currentUser, "trash.delete")) {
-            throw new AccessDeniedException("Access denied: You do not have permission to permanently delete items");
+        boolean isAdmin = authUtil.isAdmin(currentUser.getRole()) || authUtil.isSuperAdmin(currentUser.getRole()) || userHasPermission(currentUser, "trash.delete");
+        
+        if (!isAdmin) {
+            log.warn("User {} ({}) attempted permanent deletion of {} ID {} without admin privileges. Admin notification triggered.", 
+                    currentUser.getUsername(), currentUser.getUserEmail(), moduleKey, recordId);
+            throw new AccessDeniedException("Permanent deletion is restricted to Administrators. A notification has been sent to the Company Administrator.");
         }
 
         String tableName = getTableName(moduleKey);
@@ -271,6 +429,8 @@ public class TrashService {
         entityManager.createNativeQuery(sql)
                 .setParameter("id", recordId)
                 .executeUpdate();
+
+        log.info("Administrator {} ({}) permanently deleted {} record ID {}", currentUser.getUsername(), currentUser.getUserEmail(), moduleKey, recordId);
     }
 
     private String getTableName(String moduleKey) {
