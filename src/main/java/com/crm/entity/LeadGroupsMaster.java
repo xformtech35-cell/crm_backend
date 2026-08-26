@@ -13,6 +13,8 @@ public class LeadGroupsMaster {
 
     private String groupName; // optional
 
+    private String description;
+
     private Boolean active = true;
 
     @Column(name = "user_id_fk")

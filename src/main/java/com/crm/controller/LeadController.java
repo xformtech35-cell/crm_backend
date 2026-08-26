@@ -706,6 +706,7 @@ public class LeadController {
         }
 
         existingGroup.setGroupName(name);
+        existingGroup.setDescription(group.getDescription());
         if (companyAdminId != null && existingGroup.getUserIdFk() == null) {
             existingGroup.setUserIdFk(companyAdminId);
         }
