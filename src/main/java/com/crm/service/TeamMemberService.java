@@ -41,56 +41,16 @@ public class TeamMemberService {
     private final CreateTeamRepository createTeamRepository;
 
     public List<TeamMember> getAllTeamMembers(Long userId, String role) {
-        List<TeamMember> members;
         if (authUtil.isSuperAdmin(role)) {
-            members = teamMemberRepository.findAll();
+            return teamMemberRepository.findAll();
+        }
+        User user = userRepository.findById(userId).orElse(null);
+        Long companyId = authUtil.getCompanyAdminId(user);
+        List<TeamMember> members;
+        if (companyId != null) {
+            members = teamMemberRepository.findByUserIdFk(companyId);
         } else {
-            User user = userRepository.findById(userId).orElse(null);
-            String scopeMode = authUtil.resolveDataScopeMode(user, "TEAM_MEMBERS");
-
-            if ("ALL_DATA".equals(scopeMode)) {
-                Long companyId = authUtil.getCompanyAdminId(user);
-                members = teamMemberRepository.findByUserIdFk(companyId != null ? companyId : userId);
-            } else if ("TEAM_DATA".equals(scopeMode)) {
-                List<Long> teamIds = authUtil.getTeamLeadTeamIds(user);
-                List<String> teammateEmails = authUtil.getTeamLeadMemberEmails(user);
-                Long companyId = authUtil.getCompanyAdminId(user);
-                List<TeamMember> companyMembers = teamMemberRepository.findByUserIdFk(companyId != null ? companyId : userId);
-                
-                java.util.Set<Long> seenIds = new java.util.HashSet<>();
-                members = new java.util.ArrayList<>();
-                
-                if (teamIds != null) {
-                    for (Long tId : teamIds) {
-                        List<TeamMember> tMembers = teamMemberRepository.findByTeamIdFk(tId);
-                        for (TeamMember tm : tMembers) {
-                            if (tm != null && tm.getTeamMemberId() != null && !seenIds.contains(tm.getTeamMemberId())) {
-                                seenIds.add(tm.getTeamMemberId());
-                                members.add(tm);
-                            }
-                        }
-                    }
-                }
-                
-                for (TeamMember tm : companyMembers) {
-                    if (tm != null && tm.getTeamMemberEmail() != null) {
-                        String email = tm.getTeamMemberEmail().trim().toLowerCase();
-                        if ((teammateEmails.contains(email) || tm.getTeamIdFk() == null) && tm.getTeamMemberId() != null && !seenIds.contains(tm.getTeamMemberId())) {
-                            seenIds.add(tm.getTeamMemberId());
-                            members.add(tm);
-                        }
-                    }
-                }
-            } else {
-                // OWN_DATA_ONLY
-                if (user != null && user.getUserEmail() != null) {
-                    members = teamMemberRepository.findByTeamMemberEmail(user.getUserEmail())
-                            .map(tm -> new java.util.ArrayList<>(List.of(tm)))
-                            .orElseGet(java.util.ArrayList::new);
-                } else {
-                    members = new java.util.ArrayList<>();
-                }
-            }
+            members = teamMemberRepository.findByUserIdFk(userId);
         }
         for (TeamMember member : members) {
             populateUserFields(member);
